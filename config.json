@@ -1,0 +1,27 @@
+{
+    "telegram": {
+        "enabled": true,
+        "token": "YOUR_BOT_TOKEN_HERE",
+        "chat_id": ""
+    },
+    "discord": {
+        "enabled": false,
+        "webhook_url": ""
+    },
+    "rate_limiting": {
+        "enabled": true,
+        "base_delay": 0.5,
+        "stealth_mode": false,
+        "randomize": true,
+        "max_delay": 10.0
+    },
+    "attack": {
+        "threads": 10,
+        "timeout": 10,
+        "max_retries": 3
+    },
+    "session": {
+        "auto_save": true,
+        "save_interval": 100
+    }
+}
