@@ -93,7 +93,8 @@ class AttackEngine:
         threads: int = 10,
         on_progress: Callable = None,
         on_found: Callable = None,
-        on_complete: Callable = None
+        on_complete: Callable = None,
+        on_attempt: Callable = None  # New callback for each attempt
     ):
         """
         Initialize attack engine.
@@ -107,6 +108,7 @@ class AttackEngine:
             on_progress: Callback for progress updates
             on_found: Callback when credential is found
             on_complete: Callback when attack completes
+            on_attempt: Callback for each attempt (tested, user, pass, success, error)
         """
         self.attacker = attacker
         self.rate_limiter = rate_limiter
@@ -118,6 +120,7 @@ class AttackEngine:
         self.on_progress = on_progress
         self.on_found = on_found
         self.on_complete = on_complete
+        self.on_attempt = on_attempt
         
         # State
         self.stats = AttackStats()
@@ -125,9 +128,11 @@ class AttackEngine:
         self._paused = False
         self._stop_event = threading.Event()
         self._lock = threading.Lock()
+        self._last_error = None
         
         # Console
         self.console = Console()
+
     
     def start(
         self,
@@ -273,12 +278,17 @@ class AttackEngine:
         # Process completed futures
         done_futures = [f for f in futures if f.done()]
         for future in done_futures:
+            user, passwd = futures[future]
+            error_msg = None
+            success = False
+            
             try:
                 result = future.result()
                 with self._lock:
                     self.stats.tested += 1
                     
                     if result and result.success:
+                        success = True
                         self.stats.successful += 1
                         self.stats.found_credentials.append({
                             "username": result.username,
@@ -305,6 +315,9 @@ class AttackEngine:
                             self.on_found(result)
                     else:
                         self.stats.failed += 1
+                        if result and result.error:
+                            error_msg = result.error
+                            self._last_error = error_msg
                     
                     # Update session
                     if self.session_manager:
@@ -318,11 +331,20 @@ class AttackEngine:
                     found=str(self.stats.successful)
                 )
                 
+                # Call on_attempt callback for live status updates
+                if self.on_attempt:
+                    try:
+                        self.on_attempt(self.stats.tested, user, passwd, success, error_msg)
+                    except Exception:
+                        pass
+                
             except Exception as e:
                 with self._lock:
                     self.stats.errors += 1
+                    self._last_error = str(e)
             
             del futures[future]
+
     
     def _try_credential(self, username: str, password: str, u_idx: int, p_idx: int):
         """Try a single credential."""

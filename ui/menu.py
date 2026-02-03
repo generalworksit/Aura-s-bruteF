@@ -1,92 +1,96 @@
 #!/usr/bin/env python3
 """
 Aura's Bruter - Interactive Menu System
-Rich TUI menus for user interaction with clean screen management
-Uses Rich Panel for perfect box alignment
+Uses Rich components exclusively for perfect alignment
+No manual box drawing - guaranteed stable frames
 """
 
 import sys
 import shutil
-import time as time_module
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.prompt import Prompt, IntPrompt, Confirm
 from rich.align import Align
 from rich.text import Text
-from rich.box import ROUNDED, DOUBLE
+from rich.box import ROUNDED
 from typing import Optional, List, Tuple, Callable
 
 
 console = Console()
 
+# Minimum terminal width for proper display
+MIN_TERMINAL_WIDTH = 60
+
 
 def clear_screen():
-    """Clear the terminal screen."""
+    """Clear terminal screen."""
     if sys.stdout.isatty():
         print("\033[2J\033[H", end="", flush=True)
     else:
         import os
-        if os.name == 'nt':
-            os.system('cls')
-        else:
-            os.system('clear')
+        os.system('cls' if os.name == 'nt' else 'clear')
 
 
 def get_terminal_width() -> int:
-    """Get current terminal width."""
+    """Get terminal width safely."""
     try:
         return shutil.get_terminal_size().columns
     except Exception:
         return 80
 
 
+def check_terminal(show_warning: bool = True) -> bool:
+    """Check if terminal is wide enough."""
+    width = get_terminal_width()
+    if width < MIN_TERMINAL_WIDTH:
+        if show_warning:
+            console.print(f"[yellow]Terminal too narrow ({width} cols). Need at least {MIN_TERMINAL_WIDTH}.[/yellow]")
+        return False
+    return True
+
+
 def render_header():
-    """Render a compact header for menu screens."""
+    """Render compact header for menu screens - no emojis in fixed areas."""
     header = Text()
     header.append("AURA'S BRUTER", style="bold cyan")
     header.append(" - ", style="dim")
-    header.append("Security Testing Tool", style="dim white")
+    header.append("Security Testing Tool", style="white")
     
     console.print(Align.center(header))
     
-    # Add author line
     author = Text("Created by generalworksit", style="dim italic yellow")
     console.print(Align.center(author))
     console.print()
 
 
 class Menu:
-    """Base class for interactive menus using Rich Panel for alignment."""
+    """Interactive menu using Rich Panel - guaranteed alignment."""
     
-    def __init__(self, title: str, options: List[Tuple[str, str, Callable]] = None):
-        """
-        Initialize menu.
-        
-        Args:
-            title: Menu title
-            options: List of (key, label, callback) tuples
-        """
+    def __init__(self, title: str, options: List[Tuple[str, str, Optional[Callable]]] = None):
         self.title = title
         self.options = options or []
     
     def add_option(self, key: str, label: str, callback: Callable = None):
-        """Add a menu option."""
+        """Add menu option."""
         self.options.append((key, label, callback))
     
     def display(self, show_header: bool = True) -> str:
-        """Display the menu and return selected key."""
+        """Display menu and return selected key."""
         if show_header:
             render_header()
         
-        # Build menu content as Text with emojis in labels (not box chars)
+        # Build menu content - use fixed-width format for stability
         menu_content = Text()
         
         for key, label, _ in self.options:
             menu_content.append(f"  [{key}]  ", style="bold cyan")
             menu_content.append(f"{label}\n", style="white")
         
-        # Use Rich Panel for perfect box alignment
+        # Calculate panel width based on terminal
+        term_width = get_terminal_width()
+        panel_width = min(50, term_width - 4)
+        
         panel = Panel(
             menu_content,
             title=f"[bold cyan]{self.title}[/bold cyan]",
@@ -94,7 +98,7 @@ class Menu:
             border_style="cyan",
             box=ROUNDED,
             padding=(1, 3),
-            width=min(50, get_terminal_width() - 4)  # Adaptive width
+            width=panel_width
         )
         
         console.print(Align.center(panel))
@@ -114,7 +118,7 @@ class Menu:
             console.print("[red]Invalid option. Please try again.[/red]")
     
     def run(self, show_header: bool = True) -> Optional[any]:
-        """Display menu and execute selected callback."""
+        """Display and execute selected callback."""
         choice = self.display(show_header=show_header)
         
         for key, label, callback in self.options:
@@ -125,44 +129,44 @@ class Menu:
 
 
 def create_main_menu() -> Menu:
-    """Create the main protocol selection menu with emojis."""
+    """Create main protocol selection menu."""
     menu = Menu("SELECT PROTOCOL")
-    menu.add_option("1", "SSH Brute Force        [SSH]")
-    menu.add_option("2", "FTP Brute Force        [FTP]")
-    menu.add_option("3", "Telnet Brute Force     [TEL]")
-    menu.add_option("4", "Settings               [CFG]")
-    menu.add_option("5", "Resume Session         [RES]")
-    menu.add_option("6", "Exit                   [BYE]")
+    menu.add_option("1", "SSH Brute Force")
+    menu.add_option("2", "FTP Brute Force")
+    menu.add_option("3", "Telnet Brute Force")
+    menu.add_option("4", "Settings")
+    menu.add_option("5", "Resume Session")
+    menu.add_option("6", "Exit")
     return menu
 
 
 def create_attack_mode_menu() -> Menu:
-    """Create the attack mode selection menu."""
+    """Create attack mode selection menu."""
     menu = Menu("SELECT ATTACK MODE")
-    menu.add_option("1", "Dictionary Attack      [wordlist]")
-    menu.add_option("2", "Generation Attack      [charset]")
-    menu.add_option("3", "Smart Attack           [patterns]")
-    menu.add_option("0", "Back                   [<--]")
+    menu.add_option("1", "Dictionary Attack")
+    menu.add_option("2", "Generation Attack")
+    menu.add_option("3", "Smart Attack")
+    menu.add_option("0", "Back")
     return menu
 
 
 def create_settings_menu() -> Menu:
-    """Create the settings menu."""
+    """Create settings menu."""
     menu = Menu("SETTINGS")
-    menu.add_option("1", "Rate Limiting          [delay]")
-    menu.add_option("2", "Notifications          [alert]")
-    menu.add_option("3", "Thread Count           [perf]")
-    menu.add_option("4", "Session Settings       [save]")
-    menu.add_option("0", "Back                   [<--]")
+    menu.add_option("1", "Rate Limiting")
+    menu.add_option("2", "Telegram Notifications")
+    menu.add_option("3", "Thread Count")
+    menu.add_option("4", "Session Settings")
+    menu.add_option("0", "Back")
     return menu
 
 
-def render_config_panel(title: str, description: str):
-    """Render a configuration screen panel."""
-    render_header()
-    
+def render_info_panel(title: str, lines: List[Tuple[str, str]]):
+    """Render an info panel with key-value pairs."""
     content = Text()
-    content.append(description, style="dim")
+    for label, value in lines:
+        content.append(f"{label}: ", style="cyan")
+        content.append(f"{value}\n", style="white")
     
     panel = Panel(
         content,
@@ -173,21 +177,18 @@ def render_config_panel(title: str, description: str):
         width=min(60, get_terminal_width() - 4)
     )
     console.print(Align.center(panel))
-    console.print()
-
-
-def render_target_screen():
-    """Render the target configuration screen."""
-    render_config_panel(
-        "Target Configuration",
-        "Enter target information\nExample: 192.168.1.100 or example.com"
-    )
 
 
 def get_target_input() -> Tuple[str, int]:
-    """Get target host and port from user."""
+    """Get target host and port."""
     clear_screen()
-    render_target_screen()
+    render_header()
+    
+    render_info_panel("Target Configuration", [
+        ("Enter", "Target host and port"),
+        ("Example", "192.168.1.100 or domain.com")
+    ])
+    console.print()
     
     host = Prompt.ask("[cyan]Target host[/cyan]")
     port = IntPrompt.ask("[cyan]Port[/cyan]", default=22)
@@ -195,77 +196,51 @@ def get_target_input() -> Tuple[str, int]:
     return host, port
 
 
-def render_dictionary_config_screen():
-    """Render the dictionary configuration screen."""
-    render_config_panel(
-        "Dictionary Mode",
-        "Dictionary Attack Configuration\n\n"
-        "You can use:\n"
-        "- Separate username and password files\n"
-        "- Combined combo file (user:pass format)\n"
-        "- Custom schema for combo parsing"
-    )
-
-
 def get_dictionary_config() -> dict:
     """Get dictionary attack configuration."""
     clear_screen()
-    render_dictionary_config_screen()
+    render_header()
     
-    use_combo = Confirm.ask("[cyan]Use combo file (user:pass)?[/cyan]", default=False)
+    render_info_panel("Dictionary Mode", [
+        ("Option 1", "Separate user/password files"),
+        ("Option 2", "Combined combo file (user:pass)")
+    ])
+    console.print()
+    
+    use_combo = Confirm.ask("[cyan]Use combo file?[/cyan]", default=False)
     
     if use_combo:
         combo_file = Prompt.ask("[cyan]Combo file path[/cyan]")
-        schema = Prompt.ask(
-            "[cyan]Schema[/cyan]",
-            default="{user}:{pass}",
-            show_default=True
-        )
-        return {
-            "mode": "combo",
-            "combo_file": combo_file,
-            "schema": schema
-        }
+        schema = Prompt.ask("[cyan]Schema[/cyan]", default="{user}:{pass}")
+        return {"mode": "combo", "combo_file": combo_file, "schema": schema}
     else:
         users_file = Prompt.ask("[cyan]Users file path[/cyan]")
         passwords_file = Prompt.ask("[cyan]Passwords file path[/cyan]")
-        return {
-            "mode": "separate",
-            "users_file": users_file,
-            "passwords_file": passwords_file
-        }
-
-
-def render_generation_config_screen():
-    """Render the generation configuration screen."""
-    render_config_panel(
-        "Generation Mode",
-        "Generation Attack Configuration\n\n"
-        "Select character sets to use:\n"
-        "- Lowercase (a-z): 26 chars\n"
-        "- Uppercase (A-Z): 26 chars\n"
-        "- Digits (0-9): 10 chars\n"
-        "- Symbols (!@#$...): 27 chars"
-    )
+        return {"mode": "separate", "users_file": users_file, "passwords_file": passwords_file}
 
 
 def get_generation_config() -> dict:
     """Get generation attack configuration."""
     clear_screen()
-    render_generation_config_screen()
+    render_header()
+    
+    render_info_panel("Generation Mode", [
+        ("Lowercase", "a-z (26 chars)"),
+        ("Uppercase", "A-Z (26 chars)"),
+        ("Digits", "0-9 (10 chars)"),
+        ("Symbols", "Special characters")
+    ])
+    console.print()
     
     username = Prompt.ask("[cyan]Target username[/cyan]", default="root")
     
     console.print("\n[bold cyan]Character Sets:[/bold cyan]")
-    lowercase = Confirm.ask("  Include lowercase (a-z)?", default=True)
-    uppercase = Confirm.ask("  Include uppercase (A-Z)?", default=False)
-    digits = Confirm.ask("  Include digits (0-9)?", default=True)
-    symbols = Confirm.ask("  Include symbols (!@#$...)?", default=False)
+    lowercase = Confirm.ask("  Include lowercase?", default=True)
+    uppercase = Confirm.ask("  Include uppercase?", default=False)
+    digits = Confirm.ask("  Include digits?", default=True)
+    symbols = Confirm.ask("  Include symbols?", default=False)
     
-    custom = Prompt.ask(
-        "[cyan]Custom characters (leave empty for none)[/cyan]",
-        default=""
-    )
+    custom = Prompt.ask("[cyan]Custom characters (optional)[/cyan]", default="")
     
     min_length = IntPrompt.ask("[cyan]Minimum length[/cyan]", default=1)
     max_length = IntPrompt.ask("[cyan]Maximum length[/cyan]", default=4)
@@ -289,21 +264,58 @@ def get_generation_config() -> dict:
     }
 
 
-def render_rate_limit_screen():
-    """Render the rate limiting configuration screen."""
-    render_config_panel(
-        "Rate Limiting",
-        "Rate Limiting Configuration\n\n"
-        "Helps avoid detection and blocking:\n"
-        "- Normal mode: Fast with adaptive delays\n"
-        "- Stealth mode: Very slow, careful attacks"
-    )
+def get_telegram_config() -> dict:
+    """Get Telegram configuration."""
+    clear_screen()
+    render_header()
+    
+    render_info_panel("Telegram Notifications", [
+        ("Bot Token", "Get from @BotFather on Telegram"),
+        ("Chat ID", "Your Telegram user/chat ID"),
+        ("Purpose", "Receive attack status and results")
+    ])
+    console.print()
+    
+    enabled = Confirm.ask("[cyan]Enable Telegram notifications?[/cyan]", default=False)
+    
+    if not enabled:
+        return {"enabled": False}
+    
+    token = Prompt.ask("[cyan]Bot token[/cyan]")
+    chat_id = Prompt.ask("[cyan]Chat ID[/cyan]")
+    
+    console.print("\n[bold cyan]Notification Options:[/bold cyan]")
+    send_progress = Confirm.ask("  Send progress updates?", default=True)
+    send_found = Confirm.ask("  Send when credentials found?", default=True)
+    send_summary = Confirm.ask("  Send final summary?", default=True)
+    
+    if send_progress:
+        interval = IntPrompt.ask("  Progress update interval (seconds)", default=60)
+    else:
+        interval = 60
+    
+    return {
+        "enabled": True,
+        "token": token,
+        "chat_id": chat_id,
+        "send_progress": send_progress,
+        "send_found": send_found,
+        "send_summary": send_summary,
+        "progress_interval": interval
+    }
 
 
 def get_rate_limit_config() -> dict:
     """Get rate limiting configuration."""
     clear_screen()
-    render_rate_limit_screen()
+    render_header()
+    
+    render_info_panel("Rate Limiting", [
+        ("Purpose", "Avoid detection and blocking"),
+        ("Normal", "Fast with adaptive delays"),
+        ("Stealth", "Very slow, careful attacks")
+    ])
+    console.print()
     
     enabled = Confirm.ask("[cyan]Enable rate limiting?[/cyan]", default=True)
     
@@ -313,18 +325,10 @@ def get_rate_limit_config() -> dict:
     stealth = Confirm.ask("[cyan]Enable stealth mode?[/cyan]", default=False)
     
     if stealth:
-        return {
-            "enabled": True,
-            "stealth_mode": True,
-            "base_delay": 5.0
-        }
+        return {"enabled": True, "stealth_mode": True, "base_delay": 5.0}
     
-    base_delay = float(Prompt.ask(
-        "[cyan]Base delay between attempts (seconds)[/cyan]",
-        default="0.5"
-    ))
-    
-    randomize = Confirm.ask("[cyan]Randomize delays (+-30%)?[/cyan]", default=True)
+    base_delay = float(Prompt.ask("[cyan]Base delay (seconds)[/cyan]", default="0.5"))
+    randomize = Confirm.ask("[cyan]Randomize delays?[/cyan]", default=True)
     
     return {
         "enabled": True,
@@ -334,57 +338,11 @@ def get_rate_limit_config() -> dict:
     }
 
 
-def render_notification_screen():
-    """Render the notification configuration screen."""
-    render_config_panel(
-        "Notifications",
-        "Notification Configuration\n\n"
-        "Get alerts when credentials are found:\n"
-        "- Telegram: Create a bot via @BotFather\n"
-        "- Discord: Create a webhook in your server"
-    )
-
-
-def get_notification_config() -> dict:
-    """Get notification configuration."""
-    clear_screen()
-    render_notification_screen()
-    
-    config = {"telegram": {}, "discord": {}}
-    
-    # Telegram
-    use_telegram = Confirm.ask("[cyan]Enable Telegram notifications?[/cyan]", default=False)
-    if use_telegram:
-        token = Prompt.ask("[cyan]Bot token[/cyan]")
-        chat_id = Prompt.ask("[cyan]Your chat ID[/cyan]")
-        config["telegram"] = {
-            "enabled": True,
-            "token": token,
-            "chat_id": chat_id
-        }
-    else:
-        config["telegram"] = {"enabled": False}
-    
-    # Discord
-    use_discord = Confirm.ask("[cyan]Enable Discord notifications?[/cyan]", default=False)
-    if use_discord:
-        webhook = Prompt.ask("[cyan]Webhook URL[/cyan]")
-        config["discord"] = {
-            "enabled": True,
-            "webhook_url": webhook
-        }
-    else:
-        config["discord"] = {"enabled": False}
-    
-    return config
-
-
-def render_session_list_screen(sessions: list):
-    """Render the session selection screen."""
+def render_session_list(sessions: list):
+    """Render session selection list."""
     render_header()
     
     if not sessions:
-        # Show message in panel
         content = Text("No saved sessions found.\n\nStart a new attack to create a session.", style="yellow")
         panel = Panel(
             Align.center(content),
@@ -401,12 +359,7 @@ def render_session_list_screen(sessions: list):
         return
     
     # Build session table
-    table = Table(
-        title="Saved Sessions",
-        border_style="cyan",
-        box=ROUNDED,
-        width=min(70, get_terminal_width() - 4)
-    )
+    table = Table(border_style="cyan", box=ROUNDED, width=min(70, get_terminal_width() - 4))
     table.add_column("#", style="cyan", width=3)
     table.add_column("Session ID", style="white")
     table.add_column("Protocol", style="magenta")
@@ -429,17 +382,14 @@ def render_session_list_screen(sessions: list):
 
 
 def select_session(sessions: list) -> Optional[str]:
-    """Display session list and get user selection."""
+    """Display session list and get selection."""
     clear_screen()
-    render_session_list_screen(sessions)
+    render_session_list(sessions)
     
     if not sessions:
         return None
     
-    choice = IntPrompt.ask(
-        "[cyan]Select session number (0 to cancel)[/cyan]",
-        default=0
-    )
+    choice = IntPrompt.ask("[cyan]Select session (0 to cancel)[/cyan]", default=0)
     
     if choice == 0 or choice > len(sessions):
         return None
@@ -447,43 +397,45 @@ def select_session(sessions: list) -> Optional[str]:
     return sessions[choice - 1]["session_id"]
 
 
-def render_confirm_attack_screen(config: dict):
-    """Render the attack confirmation screen."""
+def show_validation_error(error_type: str, error_msg: str, host: str, port: int):
+    """Display target validation error."""
+    clear_screen()
     render_header()
     
-    # Build config display
+    error_details = {
+        "dns": ("DNS Resolution Failed", "The hostname could not be resolved."),
+        "refused": ("Connection Refused", "The target actively refused the connection."),
+        "timeout": ("Connection Timeout", "The target did not respond in time."),
+        "protocol": ("Protocol Error", "FTP handshake failed."),
+        "network": ("Network Error", "A network error occurred."),
+    }
+    
+    title, desc = error_details.get(error_type, ("Error", "An error occurred."))
+    
     content = Text()
-    for key, value in config.items():
-        if isinstance(value, dict):
-            content.append(f"{key}: ", style="cyan")
-            content.append(f"{value}\n", style="white")
-        else:
-            content.append(f"{key}: ", style="cyan")
-            content.append(f"{value}\n", style="white")
+    content.append(f"{title}\n\n", style="bold red")
+    content.append(f"Target: ", style="white")
+    content.append(f"{host}:{port}\n", style="yellow")
+    content.append(f"Error: ", style="white")
+    content.append(f"{error_msg}\n\n", style="red")
+    content.append(f"{desc}\n\n", style="dim")
+    content.append("Check the target and try again.", style="dim italic")
     
     panel = Panel(
-        content,
-        title="[bold yellow]Attack Configuration[/bold yellow]",
-        border_style="yellow",
+        Align.center(content),
+        title="[red]Validation Failed[/red]",
+        border_style="red",
         box=ROUNDED,
-        padding=(1, 2),
-        width=min(60, get_terminal_width() - 4)
+        padding=(1, 2)
     )
-    
     console.print(Align.center(panel))
     console.print()
-
-
-def confirm_attack(config: dict) -> bool:
-    """Display attack configuration and confirm."""
-    clear_screen()
-    render_confirm_attack_screen(config)
-    
-    return Confirm.ask("[bold yellow]Start attack?[/bold yellow]", default=True)
+    console.print("[dim]Press Enter to return to menu...[/dim]")
+    input()
 
 
 def show_time_estimate(estimate: dict):
-    """Display time estimate for generation attack."""
+    """Display time estimate for attack."""
     content = Text()
     content.append("Time Estimate\n\n", style="bold")
     content.append(f"Total combinations: ", style="white")
@@ -504,30 +456,58 @@ def show_time_estimate(estimate: dict):
     console.print(Align.center(panel))
 
 
+def confirm_attack(config: dict) -> bool:
+    """Display config and confirm attack start."""
+    clear_screen()
+    render_header()
+    
+    content = Text()
+    for key, value in config.items():
+        if not isinstance(value, dict):
+            content.append(f"{key}: ", style="cyan")
+            content.append(f"{value}\n", style="white")
+    
+    panel = Panel(
+        content,
+        title="[yellow]Attack Configuration[/yellow]",
+        border_style="yellow",
+        box=ROUNDED,
+        padding=(1, 2),
+        width=min(60, get_terminal_width() - 4)
+    )
+    
+    console.print(Align.center(panel))
+    console.print()
+    
+    return Confirm.ask("[bold yellow]Start attack?[/bold yellow]", default=True)
+
+
 def render_main_menu() -> str:
-    """Render and display main menu, return choice."""
+    """Render main menu and return choice."""
     clear_screen()
     menu = create_main_menu()
     return menu.display()
 
 
 def render_attack_mode_menu() -> str:
-    """Render and display attack mode menu, return choice."""
+    """Render attack mode menu and return choice."""
     clear_screen()
     menu = create_attack_mode_menu()
     return menu.display()
 
 
 def render_settings_menu() -> str:
-    """Render and display settings menu, return choice."""
+    """Render settings menu and return choice."""
     clear_screen()
     menu = create_settings_menu()
     return menu.display()
 
 
 if __name__ == "__main__":
-    # Demo menus
     console.print("[yellow]Menu System Demo[/yellow]\n")
+    
+    if not check_terminal():
+        sys.exit(1)
     
     choice = render_main_menu()
     console.print(f"\nSelected: {choice}")

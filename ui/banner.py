@@ -1,245 +1,198 @@
 #!/usr/bin/env python3
 """
-Aura's Bruter - RGB Animated Banner
-Beautiful terminal banner with rainbow animation effect
-Uses Rich for proper alignment and box rendering
+Aura's Bruter - Banner Display
+Uses Rich components exclusively for perfect alignment
+Simple ASCII art that works in all terminals
 """
 
 import time
 import sys
 import shutil
-import re
 from rich.console import Console
 from rich.text import Text
 from rich.panel import Panel
 from rich.align import Align
-from rich.box import DOUBLE, ROUNDED
+from rich.box import HEAVY, ROUNDED
 
 console = Console()
 
-# Simplified ASCII art that renders consistently
-BANNER_ASCII = """
-     █████╗ ██╗   ██╗██████╗  █████╗ ███████╗
-    ██╔══██╗██║   ██║██╔══██╗██╔══██╗██╔════╝
-    ███████║██║   ██║██████╔╝███████║███████╗
-    ██╔══██║██║   ██║██╔══██╗██╔══██║╚════██║
-    ██║  ██║╚██████╔╝██║  ██║██║  ██║███████║
-    ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝
-                                              
-    ██████╗ ██████╗ ██╗   ██╗████████╗███████╗██████╗ 
-    ██╔══██╗██╔══██╗██║   ██║╚══██╔══╝██╔════╝██╔══██╗
-    ██████╔╝██████╔╝██║   ██║   ██║   █████╗  ██████╔╝
-    ██╔══██╗██╔══██╗██║   ██║   ██║   ██╔══╝  ██╔══██╗
-    ██████╔╝██║  ██║╚██████╔╝   ██║   ███████╗██║  ██║
-    ╚═════╝ ╚═╝  ╚═╝ ╚═════╝    ╚═╝   ╚══════╝╚═╝  ╚═╝
+# Simple ASCII banner using basic characters (no Unicode blocks)
+BANNER_SIMPLE = r"""
+    _   _   _ ____      _   _ ____  
+   / \ | | | |  _ \    / \ ( ___) 
+  / _ \| | | | |_) |  / _ \ \___ \ 
+ / ___ \ |_| |  _ <  / ___ \ ___) |
+/_/   \_\___/|_| \_\/_/   \_\____/ 
+ ____  ____  _   _ _____ _____ ____  
+| __ )|  _ \| | | |_   _| ____|  _ \ 
+|  _ \| |_) | | | | | | |  _| | |_) |
+| |_) |  _ <| |_| | | | | |___|  _ < 
+|____/|_| \_\\___/  |_| |_____|_| \_\
 """
 
-# Info text
-SUBTITLE_TEXT = "Multi-Protocol Brute Force Security Testing Tool"
-PROTOCOLS_TEXT = "[ SSH | FTP | Telnet ]"
-VERSION_TEXT = "Version 1.0.0"
-AUTHOR_TEXT = "Created by generalworksit"
+# Alternative simpler banner
+BANNER_TEXT = """
+ █████╗ ██╗   ██╗██████╗  █████╗ ███████╗
+██╔══██╗██║   ██║██╔══██╗██╔══██╗██╔════╝
+███████║██║   ██║██████╔╝███████║███████╗
+██╔══██║██║   ██║██╔══██╗██╔══██║╚════██║
+██║  ██║╚██████╔╝██║  ██║██║  ██║███████║
+╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝
 
-# RGB color palette for rainbow effect (12 colors)
-RAINBOW_COLORS = [
-    "#FF0000", "#FF4500", "#FF8C00", "#FFD700", "#ADFF2F", "#00FF00",
-    "#00FA9A", "#00FFFF", "#1E90FF", "#9370DB", "#FF00FF", "#FF1493",
-]
+██████╗ ██████╗ ██╗   ██╗████████╗███████╗██████╗
+██╔══██╗██╔══██╗██║   ██║╚══██╔══╝██╔════╝██╔══██╗
+██████╔╝██████╔╝██║   ██║   ██║   █████╗  ██████╔╝
+██╔══██╗██╔══██╗██║   ██║   ██║   ██╔══╝  ██╔══██╗
+██████╔╝██║  ██║╚██████╔╝   ██║   ███████╗██║  ██║
+╚═════╝ ╚═╝  ╚═╝ ╚═════╝    ╚═╝   ╚══════╝╚═╝  ╚═╝
+"""
 
-# Gradient for static banner (cyan to purple)
-GRADIENT_COLORS = [
-    "#00FFFF", "#00E5FF", "#00CCFF", "#00B2FF", "#0099FF",
-    "#007FFF", "#0066FF", "#3333FF", "#6600FF", "#9900FF",
-    "#B200FF", "#CC00FF", "#9966FF", "#6666FF",
-]
+# Rainbow colors for animation
+RAINBOW = ["red", "yellow", "green", "cyan", "blue", "magenta"]
+
+# Gradient colors
+GRADIENT = ["cyan", "deep_sky_blue1", "dodger_blue1", "blue", "medium_purple", "magenta"]
 
 
 def clear_screen():
-    """Clear the terminal screen."""
+    """Clear terminal screen."""
     if sys.stdout.isatty():
         print("\033[2J\033[H", end="", flush=True)
     else:
         import os
-        if os.name == 'nt':
-            os.system('cls')
-        else:
-            os.system('clear')
+        os.system('cls' if os.name == 'nt' else 'clear')
 
 
 def get_terminal_width() -> int:
-    """Get current terminal width."""
+    """Get terminal width safely."""
     try:
         return shutil.get_terminal_size().columns
     except Exception:
         return 80
 
 
-def check_terminal_width(min_width: int = 60) -> bool:
+def check_terminal(min_width: int = 60) -> bool:
     """Check if terminal is wide enough."""
-    return get_terminal_width() >= min_width
+    width = get_terminal_width()
+    if width < min_width:
+        console.print(f"[yellow]Terminal too narrow ({width} cols). Need at least {min_width}.[/yellow]")
+        return False
+    return True
 
 
-def get_rainbow_text(text: str, offset: int = 0) -> Text:
-    """Create rainbow-colored text with offset for animation."""
+def create_banner_text(use_colors: bool = True, color_offset: int = 0) -> Text:
+    """Create banner as Rich Text with gradient colors."""
+    lines = BANNER_TEXT.strip().split('\n')
     result = Text()
-    color_count = len(RAINBOW_COLORS)
     
-    for i, char in enumerate(text):
-        if char in ' \n\t':
-            result.append(char)
+    for i, line in enumerate(lines):
+        if use_colors:
+            color_idx = (i + color_offset) % len(GRADIENT)
+            result.append(line, style=GRADIENT[color_idx])
         else:
-            color_idx = (i + offset) % color_count
-            result.append(char, style=RAINBOW_COLORS[color_idx])
+            result.append(line)
+        result.append("\n")
     
     return result
 
 
-def get_gradient_text(text: str, base_line: int = 0) -> Text:
-    """Create gradient-colored text based on line position."""
-    result = Text()
-    color_idx = base_line % len(GRADIENT_COLORS)
-    result.append(text, style=GRADIENT_COLORS[color_idx])
-    return result
-
-
-def animate_banner(duration: float = 1.5, fps: int = 10):
-    """
-    Animate the banner with flowing rainbow colors.
-    Uses Rich for output.
-    """
-    lines = BANNER_ASCII.strip().split('\n')
+def animate_banner(duration: float = 1.5, fps: int = 8):
+    """Animate banner with color cycling using Rich."""
+    if not check_terminal(60):
+        return
+    
+    console.show_cursor(False)
     frame_delay = 1.0 / fps
     total_frames = int(duration * fps)
     
-    # Check terminal width
-    if not check_terminal_width(60):
-        console.print("[yellow]Terminal too narrow for animation.[/yellow]")
-        return
-    
-    # Hide cursor during animation
-    console.show_cursor(False)
-    
     try:
         for frame in range(total_frames):
-            # Clear screen for each frame
             clear_screen()
             
-            # Create animated banner text
-            animated_text = Text()
-            for line_idx, line in enumerate(lines):
-                rainbow_line = get_rainbow_text(line, offset=frame + line_idx)
-                animated_text.append(rainbow_line)
-                animated_text.append("\n")
+            # Create animated banner
+            banner = create_banner_text(use_colors=True, color_offset=frame)
             
-            # Add subtitle with animation offset
-            animated_text.append("\n")
-            animated_text.append(get_rainbow_text(f"    {SUBTITLE_TEXT}    ", offset=frame))
-            animated_text.append("\n")
-            animated_text.append(get_rainbow_text(f"          {PROTOCOLS_TEXT}          ", offset=frame + 3))
-            animated_text.append("\n")
-            animated_text.append(get_rainbow_text(f"            {VERSION_TEXT}            ", offset=frame + 6))
+            # Add info below banner
+            banner.append("\n")
             
-            # Use Rich Panel for consistent box
+            color = RAINBOW[frame % len(RAINBOW)]
+            banner.append("Multi-Protocol Brute Force Security Testing Tool\n", style=f"bold {color}")
+            banner.append("[ SSH | FTP | Telnet ]\n", style=color)
+            banner.append("Version 1.0.0\n", style="dim")
+            
+            # Use Rich Panel - handles alignment automatically
             panel = Panel(
-                Align.center(animated_text),
-                border_style=RAINBOW_COLORS[frame % len(RAINBOW_COLORS)],
-                box=DOUBLE,
-                padding=(0, 1)
+                Align.center(banner),
+                border_style=color,
+                box=HEAVY,
+                padding=(0, 2)
             )
-            
             console.print(panel)
+            
             time.sleep(frame_delay)
-        
     finally:
         console.show_cursor(True)
 
 
 def display_static_banner():
-    """Display the final static banner with a nice gradient using Rich Panel."""
-    lines = BANNER_ASCII.strip().split('\n')
+    """Display static banner with gradient using Rich Panel."""
+    banner = create_banner_text(use_colors=True)
     
-    # Build gradient ASCII art - each line gets a color
-    result = Text()
-    for line_idx, line in enumerate(lines):
-        color_idx = line_idx % len(GRADIENT_COLORS)
-        result.append(line + "\n", style=GRADIENT_COLORS[color_idx])
+    # Add info
+    banner.append("\n")
+    banner.append("Multi-Protocol Brute Force Security Testing Tool\n", style="bold cyan")
+    banner.append("[ SSH | FTP | Telnet ]\n", style="magenta")
+    banner.append("Version 1.0.0\n", style="dim")
+    banner.append("Created by generalworksit", style="italic yellow")
     
-    # Add subtitle info (centered look)
-    result.append("\n", style="dim")
-    result.append(f"    {SUBTITLE_TEXT}    \n", style="bold cyan")
-    result.append(f"          {PROTOCOLS_TEXT}          \n", style="magenta")
-    result.append(f"            {VERSION_TEXT}            \n", style="dim white")
-    result.append(f"         {AUTHOR_TEXT}         ", style="dim italic yellow")
-    
-    # Create panel using Rich for perfect alignment
     panel = Panel(
-        Align.center(result),
+        Align.center(banner),
         border_style="cyan",
-        box=DOUBLE,
-        padding=(0, 1)
+        box=HEAVY,
+        padding=(0, 2)
     )
-    
     console.print(Align.center(panel))
 
 
 def display_disclaimer():
-    """Display legal disclaimer using Rich Panel for perfect alignment."""
-    # Build disclaimer content
-    disclaimer_content = Text()
-    disclaimer_content.append("LEGAL DISCLAIMER\n\n", style="bold red")
-    disclaimer_content.append("This tool is intended for ", style="yellow")
-    disclaimer_content.append("EDUCATIONAL PURPOSES ONLY", style="bold yellow")
-    disclaimer_content.append(".\n\n", style="yellow")
+    """Display legal disclaimer using Rich Panel."""
+    content = Text()
+    content.append("LEGAL DISCLAIMER\n\n", style="bold red")
+    content.append("This tool is intended for ", style="yellow")
+    content.append("EDUCATIONAL PURPOSES ONLY", style="bold yellow underline")
+    content.append(".\n\n", style="yellow")
     
-    disclaimer_content.append("  - Only use on systems you OWN or have EXPLICIT PERMISSION to test\n", style="white")
-    disclaimer_content.append("  - Unauthorized access to computer systems is ILLEGAL\n", style="white")
-    disclaimer_content.append("  - The author is NOT responsible for any misuse of this tool\n", style="white")
-    disclaimer_content.append("  - You are solely responsible for your actions\n\n", style="white")
+    content.append("- Only use on systems you OWN or have EXPLICIT PERMISSION to test\n", style="white")
+    content.append("- Unauthorized access to computer systems is ILLEGAL\n", style="white")
+    content.append("- The author is NOT responsible for any misuse of this tool\n", style="white")
+    content.append("- You are solely responsible for your actions\n\n", style="white")
     
-    disclaimer_content.append("By continuing, you agree to use this tool responsibly and legally.", style="dim")
+    content.append("By continuing, you agree to use this tool responsibly and legally.", style="dim")
     
-    # Use Rich Panel for perfect box alignment
     panel = Panel(
-        Align.center(disclaimer_content),
-        title="Terms of Use",
+        Align.center(content),
+        title="[red]Terms of Use[/red]",
         title_align="center",
         border_style="red",
         box=ROUNDED,
-        padding=(1, 2)
+        padding=(1, 3)
     )
-    
     console.print(Align.center(panel))
 
 
-def render_welcome_screen(animate: bool = True):
-    """
-    Render the complete welcome screen.
-    Handles animation, then clears and shows static banner + disclaimer.
-    """
-    if animate and check_terminal_width(60):
-        # Run animation
-        animate_banner(duration=1.5)
-        # Clear after animation
+def show_welcome(animate: bool = True):
+    """Main entry point for welcome screen."""
+    clear_screen()
+    
+    if animate and check_terminal(60):
+        animate_banner(duration=1.2)
         clear_screen()
     
-    # Show static banner
     display_static_banner()
     console.print()
-    
-    # Show disclaimer
     display_disclaimer()
     console.print()
 
 
-def show_welcome(animate: bool = True):
-    """
-    Show the complete welcome screen with banner and disclaimer.
-    This is the main entry point for the welcome flow.
-    """
-    clear_screen()
-    render_welcome_screen(animate=animate)
-
-
 if __name__ == "__main__":
-    # Demo the banner
     show_welcome(animate=True)

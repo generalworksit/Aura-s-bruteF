@@ -91,6 +91,91 @@ class TelnetAttacker:
         except Exception:
             return False
     
+    def validate_target(self):
+        """
+        Validate target before starting attack.
+        Returns a validation result with status and error details.
+        """
+        from dataclasses import dataclass
+        from typing import Optional, Dict, Any
+        
+        @dataclass
+        class ValidationResult:
+            valid: bool
+            error: Optional[str] = None
+            error_type: Optional[str] = None
+            details: Optional[Dict[str, Any]] = None
+        
+        # Step 1: DNS resolution
+        try:
+            socket.gethostbyname(self.host)
+        except socket.gaierror as e:
+            return ValidationResult(
+                valid=False,
+                error=f"DNS resolution failed: {self.host}",
+                error_type="dns",
+                details={"exception": str(e)}
+            )
+        
+        # Step 2: TCP connection check
+        sock = None
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(self.timeout)
+            result = sock.connect_ex((self.host, self.port))
+            
+            if result != 0:
+                return ValidationResult(
+                    valid=False,
+                    error=f"Port {self.port} is closed or filtered",
+                    error_type="refused",
+                    details={"connect_result": result}
+                )
+            
+            # Step 3: Try to receive initial banner/prompt
+            sock.settimeout(3.0)
+            try:
+                initial_data = sock.recv(1024)
+                banner = initial_data.decode('utf-8', errors='ignore').strip()
+                
+                return ValidationResult(
+                    valid=True,
+                    details={"banner": banner or "Connected", "host": self.host, "port": self.port}
+                )
+            except socket.timeout:
+                # No initial data but port is open - still valid
+                return ValidationResult(
+                    valid=True,
+                    details={"banner": "No banner (connected)", "host": self.host, "port": self.port}
+                )
+                
+        except socket.timeout:
+            return ValidationResult(
+                valid=False,
+                error=f"Connection timeout ({self.timeout}s)",
+                error_type="timeout"
+            )
+        except ConnectionRefusedError:
+            return ValidationResult(
+                valid=False,
+                error=f"Connection refused on port {self.port}",
+                error_type="refused"
+            )
+        except socket.error as e:
+            return ValidationResult(
+                valid=False,
+                error=f"Network error: {e}",
+                error_type="network",
+                details={"exception": str(e)}
+            )
+        finally:
+            if sock:
+                try:
+                    sock.close()
+                except Exception:
+                    pass
+
+    
     def _recv_until(self, sock: socket.socket, patterns: list, timeout: float = 5.0) -> Tuple[bytes, int]:
         """Receive data until one of the patterns is found."""
         sock.settimeout(timeout)

