@@ -240,12 +240,34 @@ def run_attack(protocol: str, mode: str, attack_config: dict, target_config: dic
 def resume_session():
     """Resume a previous session."""
     global session_manager
+    from ui.menu import clear_screen, render_header
+    from rich.panel import Panel
+    from rich.align import Align
+    from rich.box import ROUNDED
+    from rich.text import Text
+    
+    clear_screen()
+    render_header()
+    
     session_manager = SessionManager(str(Path(__file__).parent / "sessions"))
     
     sessions = session_manager.list_sessions()
     
     if not sessions:
-        console.print("[yellow]No saved sessions found.[/yellow]")
+        # Show message when no sessions
+        content = Text("No saved sessions found.\n\nStart a new attack to create a session.", style="yellow")
+        panel = Panel(
+            Align.center(content),
+            title="[yellow]Sessions[/yellow]",
+            border_style="yellow",
+            box=ROUNDED,
+            padding=(1, 2),
+            width=50
+        )
+        console.print(Align.center(panel))
+        console.print()
+        console.print("[dim]Press Enter to return to menu...[/dim]")
+        input()
         return
     
     session_id = select_session(sessions)
@@ -254,24 +276,29 @@ def resume_session():
         return
     
     # Load session
-    session = session_manager.load(session_id)
-    
-    console.print(f"\n[cyan]Resuming session: {session.session_id}[/cyan]")
-    console.print(f"[dim]Progress: {session.progress.tested}/{session.progress.total_combinations}[/dim]")
-    
-    # Get resume info
-    resume_info = session_manager.get_resume_info()
-    
-    # Recreate attack
-    run_attack(
-        protocol=session.protocol,
-        mode=session.mode,
-        attack_config=session.attack_config,
-        target_config={
-            "host": session.target_host,
-            "port": session.target_port
-        }
-    )
+    try:
+        session = session_manager.load(session_id)
+        
+        console.print(f"\n[cyan]Resuming session: {session.session_id}[/cyan]")
+        console.print(f"[dim]Progress: {session.progress.tested}/{session.progress.total_combinations}[/dim]")
+        
+        # Get resume info
+        resume_info = session_manager.get_resume_info()
+        
+        # Recreate attack
+        run_attack(
+            protocol=session.protocol,
+            mode=session.mode,
+            attack_config=session.attack_config,
+            target_config={
+                "host": session.target_host,
+                "port": session.target_port
+            }
+        )
+    except Exception as e:
+        console.print(f"[red]Error loading session: {e}[/red]")
+        console.print("[dim]Press Enter to return to menu...[/dim]")
+        input()
 
 
 def settings_menu():

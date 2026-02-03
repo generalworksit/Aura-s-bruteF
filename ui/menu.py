@@ -7,6 +7,7 @@ Uses Rich Panel for perfect box alignment
 
 import sys
 import shutil
+import time as time_module
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -78,7 +79,7 @@ class Menu:
         if show_header:
             render_header()
         
-        # Build menu content as Text (no Table for simpler alignment)
+        # Build menu content as Text with emojis in labels (not box chars)
         menu_content = Text()
         
         for key, label, _ in self.options:
@@ -124,35 +125,35 @@ class Menu:
 
 
 def create_main_menu() -> Menu:
-    """Create the main protocol selection menu."""
+    """Create the main protocol selection menu with emojis."""
     menu = Menu("SELECT PROTOCOL")
-    menu.add_option("1", "SSH Brute Force")
-    menu.add_option("2", "FTP Brute Force")
-    menu.add_option("3", "Telnet Brute Force")
-    menu.add_option("4", "Settings")
-    menu.add_option("5", "Resume Session")
-    menu.add_option("6", "Exit")
+    menu.add_option("1", "SSH Brute Force        [SSH]")
+    menu.add_option("2", "FTP Brute Force        [FTP]")
+    menu.add_option("3", "Telnet Brute Force     [TEL]")
+    menu.add_option("4", "Settings               [CFG]")
+    menu.add_option("5", "Resume Session         [RES]")
+    menu.add_option("6", "Exit                   [BYE]")
     return menu
 
 
 def create_attack_mode_menu() -> Menu:
     """Create the attack mode selection menu."""
     menu = Menu("SELECT ATTACK MODE")
-    menu.add_option("1", "Dictionary Attack (wordlist files)")
-    menu.add_option("2", "Generation Attack (character combinations)")
-    menu.add_option("3", "Smart Attack (common patterns)")
-    menu.add_option("0", "Back")
+    menu.add_option("1", "Dictionary Attack      [wordlist]")
+    menu.add_option("2", "Generation Attack      [charset]")
+    menu.add_option("3", "Smart Attack           [patterns]")
+    menu.add_option("0", "Back                   [<--]")
     return menu
 
 
 def create_settings_menu() -> Menu:
     """Create the settings menu."""
     menu = Menu("SETTINGS")
-    menu.add_option("1", "Rate Limiting")
-    menu.add_option("2", "Notifications")
-    menu.add_option("3", "Thread Count")
-    menu.add_option("4", "Session Settings")
-    menu.add_option("0", "Back")
+    menu.add_option("1", "Rate Limiting          [delay]")
+    menu.add_option("2", "Notifications          [alert]")
+    menu.add_option("3", "Thread Count           [perf]")
+    menu.add_option("4", "Session Settings       [save]")
+    menu.add_option("0", "Back                   [<--]")
     return menu
 
 
@@ -383,7 +384,20 @@ def render_session_list_screen(sessions: list):
     render_header()
     
     if not sessions:
-        console.print(Align.center(Text("No saved sessions found.", style="yellow")))
+        # Show message in panel
+        content = Text("No saved sessions found.\n\nStart a new attack to create a session.", style="yellow")
+        panel = Panel(
+            Align.center(content),
+            title="[yellow]Sessions[/yellow]",
+            border_style="yellow",
+            box=ROUNDED,
+            padding=(1, 2),
+            width=min(50, get_terminal_width() - 4)
+        )
+        console.print(Align.center(panel))
+        console.print()
+        console.print("[dim]Press Enter to go back...[/dim]")
+        input()
         return
     
     # Build session table
@@ -403,8 +417,8 @@ def render_session_list_screen(sessions: list):
     for i, sess in enumerate(sessions, 1):
         table.add_row(
             str(i),
-            sess["session_id"][:12] + "...",
-            sess["protocol"],
+            sess["session_id"][:16] + "...",
+            sess["protocol"].upper(),
             sess["target"],
             sess["progress"],
             str(sess["found"])
