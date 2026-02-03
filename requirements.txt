@@ -2,3 +2,4 @@ paramiko>=3.0.0
 rich>=13.0.0
 python-telegram-bot>=20.0
 aiohttp>=3.8.0
+wcwidth>=0.2.0
