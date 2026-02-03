@@ -179,19 +179,24 @@ def render_info_panel(title: str, lines: List[Tuple[str, str]]):
     console.print(Align.center(panel))
 
 
-def get_target_input() -> Tuple[str, int]:
+def get_target_input(protocol: str = "ssh") -> Tuple[str, int]:
     """Get target host and port."""
     clear_screen()
     render_header()
     
+    # Default ports for each protocol
+    default_ports = {"ssh": 22, "ftp": 21, "telnet": 23}
+    default_port = default_ports.get(protocol.lower(), 22)
+    
     render_info_panel("Target Configuration", [
-        ("Enter", "Target host and port"),
+        ("Protocol", protocol.upper()),
+        ("Default Port", str(default_port)),
         ("Example", "192.168.1.100 or domain.com")
     ])
     console.print()
     
     host = Prompt.ask("[cyan]Target host[/cyan]")
-    port = IntPrompt.ask("[cyan]Port[/cyan]", default=22)
+    port = IntPrompt.ask("[cyan]Port[/cyan]", default=default_port)
     
     return host, port
 

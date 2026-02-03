@@ -27,7 +27,6 @@ from ui.menu import (
     render_attack_mode_menu, show_validation_error, render_header
 )
 from ui.display import display_server_info, display_help, display_version
-from ui.live_status import AttackMonitor
 
 # Import core components
 from core.rate_limiter import RateLimiter, RateLimitConfig
@@ -249,22 +248,6 @@ def run_attack(protocol: str, mode: str, attack_config: dict, target_config: dic
         total_combinations=total
     )
     
-    # Create live status monitor
-    current_monitor = AttackMonitor(
-        target_host=host,
-        target_port=port,
-        protocol=protocol,
-        total=total
-    )
-    
-    # Start Telegram bot if enabled
-    if telegram_bot and telegram_bot.config.enabled:
-        telegram_bot.start()
-        telegram_bot.send_start(f"{host}:{port}", protocol, total)
-        
-        # Add Telegram callback to monitor
-        current_monitor.add_callback(lambda stats: telegram_bot.send_progress(current_monitor.get_summary()))
-    
     # Create and run engine
     threads = config.get("attack", {}).get("threads", 10)
     
@@ -278,42 +261,33 @@ def run_attack(protocol: str, mode: str, attack_config: dict, target_config: dic
     
     console.print(f"\n[bold green]Starting attack with {threads} threads...[/bold green]\n")
     
-    # Start live status display
-    current_monitor.start()
+    # Start Telegram bot if enabled
+    if telegram_bot and telegram_bot.config.enabled:
+        telegram_bot.start()
+        telegram_bot.send_start(f"{host}:{port}", protocol, total)
     
     try:
-        # Custom callback to update monitor during attack
-        def on_attempt(tested, username, password, success, error=None):
-            current_monitor.update(tested=tested)
-            if success:
-                current_monitor.add_credential(username, password)
-                if telegram_bot and telegram_bot.is_available:
-                    telegram_bot.send_found(username, password, f"{host}:{port}")
-            if error:
-                current_monitor.set_error(error)
-                if error and telegram_bot and telegram_bot.is_available:
-                    # Only send critical errors
-                    if any(x in error.lower() for x in ['timeout', 'refused', 'unreachable']):
-                        telegram_bot.send_error(error, f"{host}:{port}")
-        
-        # Start engine with callback
-        current_engine.on_attempt = on_attempt
+        # Run the attack (AttackEngine has its own progress display)
         current_engine.start(generator, total)
         
-        current_monitor.set_stage("completed")
-        
     except KeyboardInterrupt:
-        current_monitor.set_stage("stopped")
         current_engine.stop()
         console.print("\n[yellow]Attack stopped.[/yellow]")
     
     finally:
-        # Stop monitor
-        current_monitor.stop()
-        
         # Send final summary via Telegram
         if telegram_bot and telegram_bot.is_available:
-            telegram_bot.send_summary(current_monitor.get_summary())
+            summary = {
+                "target": f"{host}:{port}",
+                "protocol": protocol,
+                "tested": current_engine.stats.tested,
+                "found": current_engine.stats.successful,
+                "elapsed": current_engine.stats.format_elapsed(),
+                "rate": f"{current_engine.stats.speed:.1f}/s",
+                "credentials": current_engine.stats.found_credentials,
+                "stage": "completed" if not current_engine._stop_event.is_set() else "stopped"
+            }
+            telegram_bot.send_summary(summary)
             telegram_bot.stop()
         
         # Mark session complete
@@ -440,9 +414,9 @@ def settings_menu():
 
 def protocol_attack_flow(protocol: str):
     """Handle the attack flow for a protocol."""
-    # Get target
+    # Get target - pass protocol to show correct default port
     default_ports = {"ssh": 22, "ftp": 21, "telnet": 23}
-    host, port = get_target_input()
+    host, port = get_target_input(protocol)
     port = port or default_ports.get(protocol, 22)
     
     # Get attack mode
