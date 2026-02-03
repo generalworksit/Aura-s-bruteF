@@ -245,7 +245,7 @@ Aura's Bruter includes advanced techniques to avoid detection:
 
 ## 📋 Requirements
 
-- Python 3.8+
+- Python 3.8+ (tested with 3.8 - 3.13)
 - paramiko
 - rich
 - aiohttp

