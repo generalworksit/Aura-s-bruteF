@@ -53,6 +53,27 @@ RAINBOW_COLORS = [
     "#FF1493",  # Deep Pink
 ]
 
+# Gradient for static banner
+GRADIENT_COLORS = [
+    "#00FFFF", "#00E5FF", "#00CCFF", "#00B2FF", "#0099FF",
+    "#007FFF", "#0066FF", "#1A4DFF", "#3333FF", "#4D1AFF",
+    "#6600FF", "#7F00FF", "#9900FF", "#B200FF", "#CC00FF",
+    "#E500FF", "#FF00FF"
+]
+
+
+def clear_screen():
+    """Clear the terminal screen."""
+    if sys.stdout.isatty():
+        print("\033[2J\033[H", end="", flush=True)
+    else:
+        import os
+        if os.name == 'nt':
+            os.system('cls')
+        else:
+            os.system('clear')
+
+
 def get_rainbow_text(text: str, offset: int = 0) -> Text:
     """Create rainbow-colored text with offset for animation."""
     result = Text()
@@ -65,8 +86,11 @@ def get_rainbow_text(text: str, offset: int = 0) -> Text:
     return result
 
 
-def animate_banner(duration: float = 2.0, fps: int = 15):
-    """Animate the banner with flowing rainbow colors."""
+def animate_banner(duration: float = 1.5, fps: int = 12):
+    """
+    Animate the banner with flowing rainbow colors.
+    Clears screen before starting and after finishing.
+    """
     lines = BANNER_ART.strip().split('\n')
     frame_delay = 1.0 / fps
     total_frames = int(duration * fps)
@@ -76,8 +100,8 @@ def animate_banner(duration: float = 2.0, fps: int = 15):
     
     try:
         for frame in range(total_frames):
-            # Clear screen and move to top
-            console.clear()
+            # Clear and move to top for each frame
+            clear_screen()
             
             # Create animated text
             animated_text = Text()
@@ -91,30 +115,18 @@ def animate_banner(duration: float = 2.0, fps: int = 15):
             
             time.sleep(frame_delay)
         
-        # Final static display with gradient
-        display_static_banner()
-        
     finally:
         console.show_cursor(True)
 
 
 def display_static_banner():
     """Display the final static banner with a nice gradient."""
-    console.clear()
     lines = BANNER_ART.strip().split('\n')
-    
-    # Create gradient from cyan to magenta
-    gradient_colors = [
-        "#00FFFF", "#00E5FF", "#00CCFF", "#00B2FF", "#0099FF",
-        "#007FFF", "#0066FF", "#1A4DFF", "#3333FF", "#4D1AFF",
-        "#6600FF", "#7F00FF", "#9900FF", "#B200FF", "#CC00FF",
-        "#E500FF", "#FF00FF"
-    ]
     
     result = Text()
     for line_idx, line in enumerate(lines):
-        color_idx = min(line_idx, len(gradient_colors) - 1)
-        result.append(line + "\n", style=gradient_colors[color_idx])
+        color_idx = min(line_idx, len(GRADIENT_COLORS) - 1)
+        result.append(line + "\n", style=GRADIENT_COLORS[color_idx])
     
     console.print(Align.center(result))
 
@@ -143,16 +155,33 @@ def display_disclaimer():
     console.print(Align.center(panel))
 
 
-def show_welcome(animate: bool = True):
-    """Show the complete welcome screen with banner and disclaimer."""
+def render_welcome_screen(animate: bool = True):
+    """
+    Render the complete welcome screen.
+    Handles animation, then clears and shows static banner + disclaimer.
+    """
     if animate:
+        # Run animation
         animate_banner(duration=1.5)
-    else:
-        display_static_banner()
+        # Clear after animation
+        clear_screen()
     
+    # Show static banner
+    display_static_banner()
     console.print()
+    
+    # Show disclaimer
     display_disclaimer()
     console.print()
+
+
+def show_welcome(animate: bool = True):
+    """
+    Show the complete welcome screen with banner and disclaimer.
+    This is the main entry point for the welcome flow.
+    """
+    clear_screen()
+    render_welcome_screen(animate=animate)
 
 
 if __name__ == "__main__":

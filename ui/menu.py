@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
 Aura's Bruter - Interactive Menu System
-Rich TUI menus for user interaction
+Rich TUI menus for user interaction with clean screen management
 """
 
+import sys
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -14,6 +15,29 @@ from typing import Optional, List, Tuple, Callable
 
 
 console = Console()
+
+
+def clear_screen():
+    """Clear the terminal screen."""
+    if sys.stdout.isatty():
+        print("\033[2J\033[H", end="", flush=True)
+    else:
+        import os
+        if os.name == 'nt':
+            os.system('cls')
+        else:
+            os.system('clear')
+
+
+def render_header():
+    """Render a compact header for menu screens."""
+    header = Text()
+    header.append("🔐 ", style="bold")
+    header.append("AURA'S BRUTER", style="bold cyan")
+    header.append(" - ", style="dim")
+    header.append("Security Testing Tool", style="dim")
+    console.print(Align.center(header))
+    console.print()
 
 
 class Menu:
@@ -34,8 +58,11 @@ class Menu:
         """Add a menu option."""
         self.options.append((key, label, callback))
     
-    def display(self) -> str:
+    def display(self, show_header: bool = True) -> str:
         """Display the menu and return selected key."""
+        if show_header:
+            render_header()
+        
         table = Table(
             show_header=False,
             border_style="cyan",
@@ -56,6 +83,7 @@ class Menu:
         )
         
         console.print(Align.center(panel))
+        console.print()
         
         valid_keys = [opt[0].lower() for opt in self.options]
         
@@ -70,9 +98,9 @@ class Menu:
             
             console.print("[red]Invalid option. Please try again.[/red]")
     
-    def run(self) -> Optional[any]:
+    def run(self, show_header: bool = True) -> Optional[any]:
         """Display menu and execute selected callback."""
-        choice = self.display()
+        choice = self.display(show_header=show_header)
         
         for key, label, callback in self.options:
             if key.lower() == choice and callback:
@@ -114,9 +142,9 @@ def create_settings_menu() -> Menu:
     return menu
 
 
-def get_target_input() -> Tuple[str, int]:
-    """Get target host and port from user."""
-    console.print()
+def render_target_screen():
+    """Render the target configuration screen."""
+    render_header()
     
     panel = Panel(
         "[bold]Enter target information[/bold]\n"
@@ -125,6 +153,13 @@ def get_target_input() -> Tuple[str, int]:
         border_style="cyan"
     )
     console.print(panel)
+    console.print()
+
+
+def get_target_input() -> Tuple[str, int]:
+    """Get target host and port from user."""
+    clear_screen()
+    render_target_screen()
     
     host = Prompt.ask("[cyan]Target host[/cyan]")
     port = IntPrompt.ask("[cyan]Port[/cyan]", default=22)
@@ -132,9 +167,9 @@ def get_target_input() -> Tuple[str, int]:
     return host, port
 
 
-def get_dictionary_config() -> dict:
-    """Get dictionary attack configuration."""
-    console.print()
+def render_dictionary_config_screen():
+    """Render the dictionary configuration screen."""
+    render_header()
     
     panel = Panel(
         "[bold]Dictionary Attack Configuration[/bold]\n\n"
@@ -146,6 +181,13 @@ def get_dictionary_config() -> dict:
         border_style="cyan"
     )
     console.print(panel)
+    console.print()
+
+
+def get_dictionary_config() -> dict:
+    """Get dictionary attack configuration."""
+    clear_screen()
+    render_dictionary_config_screen()
     
     use_combo = Confirm.ask("[cyan]Use combo file (user:pass)?[/cyan]", default=False)
     
@@ -171,9 +213,9 @@ def get_dictionary_config() -> dict:
         }
 
 
-def get_generation_config() -> dict:
-    """Get generation attack configuration."""
-    console.print()
+def render_generation_config_screen():
+    """Render the generation configuration screen."""
+    render_header()
     
     panel = Panel(
         "[bold]Generation Attack Configuration[/bold]\n\n"
@@ -186,6 +228,13 @@ def get_generation_config() -> dict:
         border_style="cyan"
     )
     console.print(panel)
+    console.print()
+
+
+def get_generation_config() -> dict:
+    """Get generation attack configuration."""
+    clear_screen()
+    render_generation_config_screen()
     
     username = Prompt.ask("[cyan]Target username[/cyan]", default="root")
     
@@ -222,9 +271,9 @@ def get_generation_config() -> dict:
     }
 
 
-def get_rate_limit_config() -> dict:
-    """Get rate limiting configuration."""
-    console.print()
+def render_rate_limit_screen():
+    """Render the rate limiting configuration screen."""
+    render_header()
     
     panel = Panel(
         "[bold]Rate Limiting Configuration[/bold]\n\n"
@@ -235,6 +284,13 @@ def get_rate_limit_config() -> dict:
         border_style="cyan"
     )
     console.print(panel)
+    console.print()
+
+
+def get_rate_limit_config() -> dict:
+    """Get rate limiting configuration."""
+    clear_screen()
+    render_rate_limit_screen()
     
     enabled = Confirm.ask("[cyan]Enable rate limiting?[/cyan]", default=True)
     
@@ -265,9 +321,9 @@ def get_rate_limit_config() -> dict:
     }
 
 
-def get_notification_config() -> dict:
-    """Get notification configuration."""
-    console.print()
+def render_notification_screen():
+    """Render the notification configuration screen."""
+    render_header()
     
     panel = Panel(
         "[bold]Notification Configuration[/bold]\n\n"
@@ -278,6 +334,13 @@ def get_notification_config() -> dict:
         border_style="cyan"
     )
     console.print(panel)
+    console.print()
+
+
+def get_notification_config() -> dict:
+    """Get notification configuration."""
+    clear_screen()
+    render_notification_screen()
     
     config = {"telegram": {}, "discord": {}}
     
@@ -308,11 +371,13 @@ def get_notification_config() -> dict:
     return config
 
 
-def select_session(sessions: list) -> Optional[str]:
-    """Display session list and get user selection."""
+def render_session_list_screen(sessions: list):
+    """Render the session selection screen."""
+    render_header()
+    
     if not sessions:
         console.print("[yellow]No saved sessions found.[/yellow]")
-        return None
+        return
     
     table = Table(title="[bold]Saved Sessions[/bold]", border_style="cyan")
     table.add_column("#", style="cyan", width=3)
@@ -335,6 +400,16 @@ def select_session(sessions: list) -> Optional[str]:
         )
     
     console.print(table)
+    console.print()
+
+
+def select_session(sessions: list) -> Optional[str]:
+    """Display session list and get user selection."""
+    clear_screen()
+    render_session_list_screen(sessions)
+    
+    if not sessions:
+        return None
     
     choice = IntPrompt.ask(
         "[cyan]Select session number (0 to cancel)[/cyan]",
@@ -347,9 +422,9 @@ def select_session(sessions: list) -> Optional[str]:
     return sessions[choice - 1]["session_id"]
 
 
-def confirm_attack(config: dict) -> bool:
-    """Display attack configuration and confirm."""
-    console.print()
+def render_confirm_attack_screen(config: dict):
+    """Render the attack confirmation screen."""
+    render_header()
     
     table = Table(
         title="[bold]Attack Configuration[/bold]",
@@ -367,6 +442,12 @@ def confirm_attack(config: dict) -> bool:
     
     console.print(table)
     console.print()
+
+
+def confirm_attack(config: dict) -> bool:
+    """Display attack configuration and confirm."""
+    clear_screen()
+    render_confirm_attack_screen(config)
     
     return Confirm.ask("[bold yellow]Start attack?[/bold yellow]", default=True)
 
@@ -384,10 +465,30 @@ def show_time_estimate(estimate: dict):
     console.print(panel)
 
 
+def render_main_menu() -> str:
+    """Render and display main menu, return choice."""
+    clear_screen()
+    menu = create_main_menu()
+    return menu.display()
+
+
+def render_attack_mode_menu() -> str:
+    """Render and display attack mode menu, return choice."""
+    clear_screen()
+    menu = create_attack_mode_menu()
+    return menu.display()
+
+
+def render_settings_menu() -> str:
+    """Render and display settings menu, return choice."""
+    clear_screen()
+    menu = create_settings_menu()
+    return menu.display()
+
+
 if __name__ == "__main__":
     # Demo menus
     console.print("[yellow]Menu System Demo[/yellow]\n")
     
-    main = create_main_menu()
-    choice = main.display()
+    choice = render_main_menu()
     console.print(f"\nSelected: {choice}")

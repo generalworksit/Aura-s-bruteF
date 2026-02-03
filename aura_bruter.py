@@ -16,14 +16,16 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from rich.console import Console
 from rich.prompt import Confirm
+import sys
 
 # Import UI components
-from ui.banner import show_welcome
+from ui.banner import show_welcome, clear_screen
 from ui.menu import (
     create_main_menu, create_attack_mode_menu, create_settings_menu,
     get_target_input, get_dictionary_config, get_generation_config,
     get_rate_limit_config, get_notification_config, select_session,
-    confirm_attack, show_time_estimate
+    confirm_attack, show_time_estimate, render_main_menu, render_settings_menu,
+    render_attack_mode_menu
 )
 from ui.display import display_server_info, display_help, display_version
 
@@ -275,8 +277,7 @@ def resume_session():
 def settings_menu():
     """Handle settings menu."""
     while True:
-        menu = create_settings_menu()
-        choice = menu.display()
+        choice = render_settings_menu()
         
         if choice == "0":
             break
@@ -285,32 +286,48 @@ def settings_menu():
             rl_config = get_rate_limit_config()
             config["rate_limiting"] = rl_config
             save_config()
-            console.print("[green]Rate limiting settings saved.[/green]")
+            clear_screen()
+            console.print("[green]✓ Rate limiting settings saved.[/green]")
+            import time
+            time.sleep(1)
         elif choice == "2":
             # Notifications
             notif_config = get_notification_config()
             config["telegram"] = notif_config["telegram"]
             config["discord"] = notif_config["discord"]
             save_config()
-            console.print("[green]Notification settings saved.[/green]")
+            clear_screen()
+            console.print("[green]✓ Notification settings saved.[/green]")
+            import time
+            time.sleep(1)
         elif choice == "3":
             # Threads
+            clear_screen()
+            from ui.menu import render_header
+            render_header()
             from rich.prompt import IntPrompt
             threads = IntPrompt.ask("[cyan]Number of threads[/cyan]", default=10)
             if "attack" not in config:
                 config["attack"] = {}
             config["attack"]["threads"] = max(1, min(threads, 100))
             save_config()
-            console.print(f"[green]Thread count set to {config['attack']['threads']}.[/green]")
+            console.print(f"[green]✓ Thread count set to {config['attack']['threads']}.[/green]")
+            import time
+            time.sleep(1)
         elif choice == "4":
             # Session settings
-            from rich.prompt import Confirm
-            auto_save = Confirm.ask("[cyan]Auto-save sessions?[/cyan]", default=True)
+            clear_screen()
+            from ui.menu import render_header
+            render_header()
+            from rich.prompt import Confirm as ConfirmPrompt
+            auto_save = ConfirmPrompt.ask("[cyan]Auto-save sessions?[/cyan]", default=True)
             if "session" not in config:
                 config["session"] = {}
             config["session"]["auto_save"] = auto_save
             save_config()
-            console.print("[green]Session settings saved.[/green]")
+            console.print("[green]✓ Session settings saved.[/green]")
+            import time
+            time.sleep(1)
 
 
 def protocol_attack_flow(protocol: str):
@@ -321,8 +338,7 @@ def protocol_attack_flow(protocol: str):
     port = port or default_ports.get(protocol, 22)
     
     # Get attack mode
-    mode_menu = create_attack_mode_menu()
-    mode_choice = mode_menu.display()
+    mode_choice = render_attack_mode_menu()
     
     if mode_choice == "0":
         return
@@ -360,7 +376,7 @@ def main_interactive():
     """Run in interactive TUI mode."""
     load_config()
     
-    # Show welcome banner
+    # Show welcome banner and animation
     show_welcome(animate=True)
     
     # Accept disclaimer
@@ -368,12 +384,10 @@ def main_interactive():
         console.print("[yellow]You must accept the terms to use this tool.[/yellow]")
         sys.exit(0)
     
-    console.print()
-    
-    # Main loop
+    # Main loop - clear screen after accepting terms
     while True:
-        menu = create_main_menu()
-        choice = menu.display()
+        # Render main menu with clean screen
+        choice = render_main_menu()
         
         if choice == "1":
             protocol_attack_flow("ssh")
@@ -386,7 +400,8 @@ def main_interactive():
         elif choice == "5":
             resume_session()
         elif choice == "6":
-            console.print("[cyan]Goodbye! 👋[/cyan]")
+            clear_screen()
+            console.print("[cyan]\n  Goodbye! 👋\n[/cyan]")
             break
 
 
