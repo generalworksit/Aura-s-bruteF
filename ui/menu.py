@@ -130,35 +130,36 @@ class Menu:
 
 def create_main_menu() -> Menu:
     """Create main protocol selection menu."""
-    menu = Menu("SELECT PROTOCOL")
-    menu.add_option("1", "SSH Brute Force")
-    menu.add_option("2", "FTP Brute Force")
-    menu.add_option("3", "Telnet Brute Force")
-    menu.add_option("4", "Settings")
-    menu.add_option("5", "Resume Session")
-    menu.add_option("6", "Exit")
+    menu = Menu("🎯 SELECT PROTOCOL")
+    menu.add_option("1", "🔐 SSH Brute Force")
+    menu.add_option("2", "📁 FTP Brute Force")
+    menu.add_option("3", "🖥️  Telnet Brute Force")
+    menu.add_option("4", "⚙️  Settings")
+    menu.add_option("5", "📂 Resume Session")
+    menu.add_option("6", "🚪 Exit")
     return menu
 
 
 def create_attack_mode_menu() -> Menu:
     """Create attack mode selection menu."""
-    menu = Menu("SELECT ATTACK MODE")
-    menu.add_option("1", "Dictionary Attack")
-    menu.add_option("2", "Generation Attack")
-    menu.add_option("3", "Smart Attack")
-    menu.add_option("0", "Back")
+    menu = Menu("⚔️  SELECT ATTACK MODE")
+    menu.add_option("1", "📖 Dictionary Attack")
+    menu.add_option("2", "🎲 Generation Attack")
+    menu.add_option("3", "🧠 Smart Attack")
+    menu.add_option("0", "⬅️  Back")
     return menu
 
 
 def create_settings_menu() -> Menu:
     """Create settings menu."""
-    menu = Menu("SETTINGS")
-    menu.add_option("1", "Rate Limiting")
-    menu.add_option("2", "Telegram Notifications")
-    menu.add_option("3", "Thread Count")
-    menu.add_option("4", "Session Settings")
-    menu.add_option("0", "Back")
+    menu = Menu("⚙️  SETTINGS")
+    menu.add_option("1", "🐢 Rate Limiting")
+    menu.add_option("2", "📱 Telegram Notifications")
+    menu.add_option("3", "🧵 Thread Count")
+    menu.add_option("4", "💾 Session Settings")
+    menu.add_option("0", "⬅️  Back")
     return menu
+
 
 
 def render_info_panel(title: str, lines: List[Tuple[str, str]]):
@@ -188,15 +189,15 @@ def get_target_input(protocol: str = "ssh") -> Tuple[str, int]:
     default_ports = {"ssh": 22, "ftp": 21, "telnet": 23}
     default_port = default_ports.get(protocol.lower(), 22)
     
-    render_info_panel("Target Configuration", [
-        ("Protocol", protocol.upper()),
-        ("Default Port", str(default_port)),
-        ("Example", "192.168.1.100 or domain.com")
+    render_info_panel("🎯 Target Configuration", [
+        ("📡 Protocol", protocol.upper()),
+        ("🔌 Default Port", str(default_port)),
+        ("💡 Example", "192.168.1.100 or domain.com")
     ])
     console.print()
     
-    host = Prompt.ask("[cyan]Target host[/cyan]")
-    port = IntPrompt.ask("[cyan]Port[/cyan]", default=default_port)
+    host = Prompt.ask("🌐 [cyan]Target host[/cyan]")
+    port = IntPrompt.ask("🔌 [cyan]Port[/cyan]", default=default_port)
     
     return host, port
 
@@ -206,21 +207,21 @@ def get_dictionary_config() -> dict:
     clear_screen()
     render_header()
     
-    render_info_panel("Dictionary Mode", [
-        ("Option 1", "Separate user/password files"),
-        ("Option 2", "Combined combo file (user:pass)")
+    render_info_panel("📖 Dictionary Mode", [
+        ("📄 Option 1", "Separate user/password files"),
+        ("📋 Option 2", "Combined combo file (user:pass)")
     ])
     console.print()
     
-    use_combo = Confirm.ask("[cyan]Use combo file?[/cyan]", default=False)
+    use_combo = Confirm.ask("📦 [cyan]Use combo file?[/cyan]", default=False)
     
     if use_combo:
-        combo_file = Prompt.ask("[cyan]Combo file path[/cyan]")
-        schema = Prompt.ask("[cyan]Schema[/cyan]", default="{user}:{pass}")
+        combo_file = Prompt.ask("📋 [cyan]Combo file path[/cyan]")
+        schema = Prompt.ask("🔧 [cyan]Schema[/cyan]", default="{user}:{pass}")
         return {"mode": "combo", "combo_file": combo_file, "schema": schema}
     else:
-        users_file = Prompt.ask("[cyan]Users file path[/cyan]")
-        passwords_file = Prompt.ask("[cyan]Passwords file path[/cyan]")
+        users_file = Prompt.ask("👤 [cyan]Users file path[/cyan]")
+        passwords_file = Prompt.ask("🔑 [cyan]Passwords file path[/cyan]")
         return {"mode": "separate", "users_file": users_file, "passwords_file": passwords_file}
 
 
@@ -229,29 +230,40 @@ def get_generation_config() -> dict:
     clear_screen()
     render_header()
     
-    render_info_panel("Generation Mode", [
-        ("Lowercase", "a-z (26 chars)"),
-        ("Uppercase", "A-Z (26 chars)"),
-        ("Digits", "0-9 (10 chars)"),
-        ("Symbols", "Special characters")
+    render_info_panel("🎲 Generation Mode", [
+        ("🔤 Lowercase", "a-z (26 chars)"),
+        ("🔠 Uppercase", "A-Z (26 chars)"),
+        ("🔢 Digits", "0-9 (10 chars)"),
+        ("💫 Symbols", "!@#$%^&*...")
     ])
     console.print()
     
-    username = Prompt.ask("[cyan]Target username[/cyan]", default="root")
+    # Username tips
+    console.print("[dim]💡 Tip: Common usernames to try: root, admin, administrator, user, guest[/dim]")
+    console.print("[dim]   You can enumerate usernames first or use dictionary mode for multiple users[/dim]\n")
     
-    console.print("\n[bold cyan]Character Sets:[/bold cyan]")
-    lowercase = Confirm.ask("  Include lowercase?", default=True)
-    uppercase = Confirm.ask("  Include uppercase?", default=False)
-    digits = Confirm.ask("  Include digits?", default=True)
-    symbols = Confirm.ask("  Include symbols?", default=False)
+    username = Prompt.ask("👤 [cyan]Target username[/cyan]", default="root")
     
-    custom = Prompt.ask("[cyan]Custom characters (optional)[/cyan]", default="")
+    console.print("\n[bold cyan]🎨 Character Sets:[/bold cyan]")
+    lowercase = Confirm.ask("  🔤 Include lowercase?", default=True)
+    uppercase = Confirm.ask("  🔠 Include uppercase?", default=False)
+    digits = Confirm.ask("  🔢 Include digits?", default=True)
+    symbols = Confirm.ask("  💫 Include symbols?", default=False)
     
-    min_length = IntPrompt.ask("[cyan]Minimum length[/cyan]", default=1)
-    max_length = IntPrompt.ask("[cyan]Maximum length[/cyan]", default=4)
+    custom = Prompt.ask("✨ [cyan]Custom characters (optional)[/cyan]", default="")
     
-    prefix = Prompt.ask("[cyan]Password prefix (optional)[/cyan]", default="")
-    suffix = Prompt.ask("[cyan]Password suffix (optional)[/cyan]", default="")
+    console.print("\n[bold cyan]📏 Password Length:[/bold cyan]")
+    min_length = IntPrompt.ask("  ⬇️  [cyan]Minimum length[/cyan]", default=0)
+    max_length = IntPrompt.ask("  ⬆️  [cyan]Maximum length[/cyan]", default=6)
+    
+    # Validate max length
+    if max_length > 12:
+        console.print("[yellow]⚠️  Max length capped at 12 to avoid extremely long attacks[/yellow]")
+        max_length = 12
+    
+    console.print("\n[bold cyan]🔧 Optional Modifiers:[/bold cyan]")
+    prefix = Prompt.ask("  ➡️  [cyan]Password prefix[/cyan]", default="")
+    suffix = Prompt.ask("  ⬅️  [cyan]Password suffix[/cyan]", default="")
     
     return {
         "username": username,
@@ -262,8 +274,8 @@ def get_generation_config() -> dict:
             "symbols": symbols,
             "custom": custom
         },
-        "min_length": min_length,
-        "max_length": max_length,
+        "min_length": max(0, min_length),  # Allow 0
+        "max_length": min(12, max_length),  # Cap at 12
         "prefix": prefix,
         "suffix": suffix
     }

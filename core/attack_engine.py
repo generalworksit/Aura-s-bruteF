@@ -130,8 +130,69 @@ class AttackEngine:
         self._lock = threading.Lock()
         self._last_error = None
         
+        # Health monitoring
+        self._host_status = "🟢 UP"  # Host status: UP, DOWN, UNSTABLE
+        self._consecutive_failures = 0
+        self._health_check_interval = 10  # Check every 10 seconds
+        self._health_thread = None
+        self._last_success_time = time.time()
+        
         # Console
         self.console = Console()
+    
+    def _check_host_health(self):
+        """Background thread to monitor host availability."""
+        import socket
+        
+        while self._running and not self._stop_event.is_set():
+            try:
+                # Quick TCP connection check
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(3.0)
+                result = sock.connect_ex((self.attacker.host, self.attacker.port))
+                sock.close()
+                
+                if result == 0:
+                    # Host is reachable
+                    if self._host_status != "🟢 UP":
+                        self.console.print(f"\n[green]✅ Host {self.attacker.host}:{self.attacker.port} is back ONLINE[/green]")
+                    self._host_status = "🟢 UP"
+                    self._consecutive_failures = 0
+                    self._last_success_time = time.time()
+                else:
+                    # Connection failed
+                    self._consecutive_failures += 1
+                    if self._consecutive_failures >= 3:
+                        self._host_status = "🔴 DOWN"
+                        self.console.print(f"\n[red]❌ Host {self.attacker.host}:{self.attacker.port} appears DOWN![/red]")
+                        self.console.print("[yellow]⏸️  Attack paused. Waiting for host to come back...[/yellow]")
+                    else:
+                        self._host_status = "🟡 UNSTABLE"
+                        
+            except socket.timeout:
+                self._consecutive_failures += 1
+                if self._consecutive_failures >= 3:
+                    self._host_status = "🔴 DOWN"
+                    self.console.print(f"\n[red]❌ Connection timeout - Host may be DOWN[/red]")
+                else:
+                    self._host_status = "🟡 UNSTABLE"
+                    
+            except Exception as e:
+                self._consecutive_failures += 1
+                self._host_status = "🟡 UNSTABLE"
+            
+            # Wait before next check
+            time.sleep(self._health_check_interval)
+    
+    def _start_health_monitor(self):
+        """Start the health monitoring thread."""
+        self._health_thread = threading.Thread(target=self._check_host_health, daemon=True)
+        self._health_thread.start()
+    
+    def _stop_health_monitor(self):
+        """Stop the health monitoring thread."""
+        if self._health_thread and self._health_thread.is_alive():
+            self._health_thread.join(timeout=1)
 
     
     def start(
@@ -183,15 +244,20 @@ class AttackEngine:
     def _run_with_progress(self, credential_generator):
         """Run attack with Rich progress display."""
         
+        # Start health monitoring
+        self._start_health_monitor()
+        
         with Progress(
             SpinnerColumn(),
             TextColumn("[bold blue]{task.description}"),
-            BarColumn(bar_width=40),
+            BarColumn(bar_width=30),
             TextColumn("[progress.percentage]{task.percentage:>3.1f}%"),
             TextColumn("•"),
             TextColumn("[cyan]{task.fields[speed]}/s"),
             TextColumn("•"),
             TextColumn("[yellow]Found: {task.fields[found]}"),
+            TextColumn("•"),
+            TextColumn("{task.fields[status]}"),  # Host status
             TimeElapsedColumn(),
             TextColumn("•"),
             TimeRemainingColumn(),
@@ -200,10 +266,11 @@ class AttackEngine:
         ) as progress:
             
             task = progress.add_task(
-                f"[cyan]Attacking {self.attacker.host}:{self.attacker.port}",
+                f"[cyan]⚔️  Attacking {self.attacker.host}:{self.attacker.port}",
                 total=self.stats.total,
                 speed="0",
-                found="0"
+                found="0",
+                status=self._host_status  # Add status field
             )
             
             with ThreadPoolExecutor(max_workers=self.threads) as executor:
@@ -216,8 +283,11 @@ class AttackEngine:
                         if self._stop_event.is_set():
                             break
                         
-                        while self._paused and not self._stop_event.is_set():
-                            time.sleep(0.1)
+                        # Pause if host is down
+                        while (self._paused or self._host_status == "🔴 DOWN") and not self._stop_event.is_set():
+                            time.sleep(0.5)
+                            # Update status in progress display
+                            progress.update(task, status=self._host_status)
                         
                         credentials_batch.append(cred)
                         
@@ -240,10 +310,11 @@ class AttackEngine:
                 
                 except KeyboardInterrupt:
                     self.stop()
-                    self.console.print("\n[yellow]Attack interrupted by user[/yellow]")
+                    self.console.print("\n[yellow]⏹️  Attack interrupted by user[/yellow]")
                 
                 finally:
                     self._running = False
+                    self._stop_health_monitor()  # Stop health monitoring
         
         # Show final results
         self._show_results()
@@ -268,22 +339,27 @@ class AttackEngine:
     
     def _process_batch(self, executor, futures, credentials_batch, progress, task):
         """Process a batch of credentials."""
+        # Submit all credentials in batch
+        batch_futures = {}
         for user, passwd, u_idx, p_idx in credentials_batch:
             if self._stop_event.is_set():
                 break
-            
             future = executor.submit(self._try_credential, user, passwd, u_idx, p_idx)
+            batch_futures[future] = (user, passwd)
             futures[future] = (user, passwd)
         
-        # Process completed futures
-        done_futures = [f for f in futures if f.done()]
-        for future in done_futures:
-            user, passwd = futures[future]
+        # Wait for batch futures to complete and process results
+        for future in as_completed(batch_futures):
+            if self._stop_event.is_set():
+                break
+                
+            user, passwd = batch_futures[future]
             error_msg = None
             success = False
             
             try:
-                result = future.result()
+                result = future.result(timeout=30)  # 30 second timeout per attempt
+                
                 with self._lock:
                     self.stats.tested += 1
                     
@@ -323,12 +399,13 @@ class AttackEngine:
                     if self.session_manager:
                         self.session_manager.update_progress(tested=self.stats.tested)
                 
-                # Update progress
+                # Update progress with host status
                 progress.update(
                     task,
                     completed=self.stats.tested,
                     speed=f"{self.stats.speed:.1f}",
-                    found=str(self.stats.successful)
+                    found=str(self.stats.successful),
+                    status=self._host_status
                 )
                 
                 # Call on_attempt callback for live status updates
@@ -341,9 +418,21 @@ class AttackEngine:
             except Exception as e:
                 with self._lock:
                     self.stats.errors += 1
+                    self.stats.tested += 1  # Still count as tested even on error
                     self._last_error = str(e)
+                
+                # Update progress even on error
+                progress.update(
+                    task,
+                    completed=self.stats.tested,
+                    speed=f"{self.stats.speed:.1f}",
+                    found=str(self.stats.successful),
+                    status=self._host_status
+                )
             
-            del futures[future]
+            # Remove from main futures dict
+            if future in futures:
+                del futures[future]
 
     
     def _try_credential(self, username: str, password: str, u_idx: int, p_idx: int):
