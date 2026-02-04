@@ -7,6 +7,7 @@ No manual box drawing - guaranteed stable frames
 
 import sys
 import shutil
+import random
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -15,6 +16,29 @@ from rich.align import Align
 from rich.text import Text
 from rich.box import ROUNDED
 from typing import Optional, List, Tuple, Callable
+
+# Random tips to display throughout the app
+SECURITY_TIPS = [
+    "💡 Tip: Use Dictionary mode for known password lists",
+    "💡 Tip: Generation mode with digits only is fastest",
+    "💡 Tip: Disable rate limiting for faster testing (Settings)",
+    "💡 Tip: SSH is more secure than Telnet - prioritize SSH",
+    "💡 Tip: Common usernames: root, admin, administrator, user",
+    "💡 Tip: Use Hydra for faster attacks on large wordlists",
+    "💡 Tip: Sessions are auto-saved - you can resume anytime",
+    "💡 Tip: Telegram notifications alert you on findings",
+    "💡 Tip: Increase threads in Settings for more speed",
+    "💡 Tip: 4-digit passwords have only 10,000 combinations",
+    "💡 Tip: FTP default port is 21, SSH is 22, Telnet is 23",
+    "💡 Tip: Use prefix/suffix for known password patterns",
+    "💡 Tip: Smart Attack combines dictionary + generation",
+    "💡 Tip: Rate limiting helps avoid detection/bans",
+    "💡 Tip: Always get authorization before testing!",
+]
+
+def get_random_tip() -> str:
+    """Get a random security tip."""
+    return random.choice(SECURITY_TIPS)
 
 
 console = Console()
@@ -161,6 +185,60 @@ def create_settings_menu() -> Menu:
     return menu
 
 
+def create_tool_selection_menu() -> Menu:
+    """Create tool selection menu (Aura vs Hydra)."""
+    menu = Menu("🔧 SELECT ATTACK TOOL")
+    menu.add_option("1", "🌟 Aura's Bruter (Python)")
+    menu.add_option("2", "⚡ Hydra (Faster - C)")
+    menu.add_option("0", "⬅️  Back")
+    return menu
+
+
+def get_tool_selection() -> str:
+    """Get user's choice of attack tool with recommendations."""
+    clear_screen()
+    render_header()
+    
+    # Info panel with recommendations
+    content = Text()
+    content.append("\n🔧 Choose Your Attack Engine\n\n", style="bold yellow")
+    
+    content.append("🌟 Aura's Bruter (Recommended for beginners)\n", style="cyan")
+    content.append("   • Beautiful UI with real-time progress\n", style="dim")
+    content.append("   • Session save/resume\n", style="dim")
+    content.append("   • Telegram notifications\n", style="dim")
+    content.append("   • Host health monitoring\n", style="dim")
+    content.append("   • Speed: ~5-10 attempts/sec\n\n", style="dim")
+    
+    content.append("⚡ Hydra (Recommended for large wordlists)\n", style="green")
+    content.append("   • Written in C - much faster\n", style="dim")
+    content.append("   • Industry standard tool\n", style="dim")
+    content.append("   • Speed: ~50-100+ attempts/sec\n", style="dim")
+    content.append("   • Requires Hydra to be installed\n\n", style="dim")
+    
+    content.append(f"{get_random_tip()}", style="dim italic")
+    
+    panel = Panel(
+        content,
+        title="[bold cyan]⚙️ Tool Selection[/bold cyan]",
+        border_style="cyan",
+        box=ROUNDED,
+        padding=(1, 2),
+        width=min(60, get_terminal_width() - 4)
+    )
+    console.print(Align.center(panel))
+    console.print()
+    
+    menu = create_tool_selection_menu()
+    choice = menu.display(show_header=False)
+    
+    if choice == "1":
+        return "aura"
+    elif choice == "2":
+        return "hydra"
+    return "back"
+
+
 
 def render_info_panel(title: str, lines: List[Tuple[str, str]]):
     """Render an info panel with key-value pairs."""
@@ -178,6 +256,71 @@ def render_info_panel(title: str, lines: List[Tuple[str, str]]):
         width=min(60, get_terminal_width() - 4)
     )
     console.print(Align.center(panel))
+
+
+def mask_token(token: str) -> str:
+    """Mask a token for display (show first 4 and last 4 chars)."""
+    if not token or len(token) < 10:
+        return "Not configured"
+    return f"{token[:4]}...{token[-4:]}"
+
+
+def render_settings_status(config: dict):
+    """Display current settings status panel."""
+    # Extract settings from config
+    rate_config = config.get("rate_limiting", {})
+    telegram_config = config.get("telegram", {})
+    attack_config = config.get("attack", {})
+    
+    rate_enabled = rate_config.get("enabled", True)
+    rate_status = "🟢 ON" if rate_enabled else "🔴 OFF"
+    base_delay = rate_config.get("base_delay", 0.5)
+    stealth = rate_config.get("stealth_mode", False)
+    stealth_status = "🟢 ON" if stealth else "🔴 OFF"
+    
+    telegram_enabled = telegram_config.get("enabled", False)
+    telegram_status = "🟢 ON" if telegram_enabled else "🔴 OFF"
+    bot_token = telegram_config.get("bot_token", "")
+    chat_id = telegram_config.get("chat_id", "")
+    
+    threads = attack_config.get("threads", 10)
+    
+    content = Text()
+    content.append("\n📊 Current Configuration\n\n", style="bold yellow")
+    
+    # Rate Limiting section
+    content.append("🐢 Rate Limiting: ", style="cyan")
+    content.append(f"{rate_status}\n", style="green" if rate_enabled else "red")
+    content.append("   Base Delay: ", style="dim")
+    content.append(f"{base_delay}s\n", style="white")
+    content.append("   Stealth Mode: ", style="dim")
+    content.append(f"{stealth_status}\n\n", style="green" if stealth else "red")
+    
+    # Telegram section
+    content.append("📱 Telegram: ", style="cyan")
+    content.append(f"{telegram_status}\n", style="green" if telegram_enabled else "red")
+    content.append("   Bot Token: ", style="dim")
+    content.append(f"{mask_token(bot_token)}\n", style="white")
+    content.append("   Chat ID: ", style="dim")
+    content.append(f"{chat_id if chat_id else 'Not set'}\n\n", style="white")
+    
+    # Thread section
+    content.append("🧵 Threads: ", style="cyan")
+    content.append(f"{threads}\n", style="white")
+    
+    # Random tip
+    content.append(f"\n{get_random_tip()}", style="dim italic")
+    
+    panel = Panel(
+        content,
+        title="[bold cyan]⚙️ Settings Overview[/bold cyan]",
+        border_style="cyan",
+        box=ROUNDED,
+        padding=(1, 2),
+        width=min(65, get_terminal_width() - 4)
+    )
+    console.print(Align.center(panel))
+    console.print()
 
 
 def get_target_input(protocol: str = "ssh") -> Tuple[str, int]:
@@ -503,7 +646,12 @@ def render_main_menu() -> str:
     """Render main menu and return choice."""
     clear_screen()
     menu = create_main_menu()
-    return menu.display()
+    choice = menu.display()
+    
+    # Show a random tip after menu
+    console.print(f"\n[dim italic]{get_random_tip()}[/dim italic]")
+    
+    return choice
 
 
 def render_attack_mode_menu() -> str:
@@ -513,11 +661,12 @@ def render_attack_mode_menu() -> str:
     return menu.display()
 
 
-def render_settings_menu() -> str:
+def render_settings_menu(show_header: bool = True) -> str:
     """Render settings menu and return choice."""
-    clear_screen()
+    if show_header:
+        clear_screen()
     menu = create_settings_menu()
-    return menu.display()
+    return menu.display(show_header=show_header)
 
 
 if __name__ == "__main__":

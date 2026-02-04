@@ -24,7 +24,8 @@ from ui.menu import (
     get_target_input, get_dictionary_config, get_generation_config,
     get_rate_limit_config, get_telegram_config, select_session,
     confirm_attack, show_time_estimate, render_main_menu, render_settings_menu,
-    render_attack_mode_menu, show_validation_error, render_header
+    render_attack_mode_menu, show_validation_error, render_header,
+    render_settings_status, get_tool_selection, get_random_tip
 )
 from ui.display import display_server_info, display_help, display_version
 
@@ -362,7 +363,12 @@ def resume_session():
 def settings_menu():
     """Handle settings menu."""
     while True:
-        choice = render_settings_menu()
+        # Show current settings status before the menu
+        clear_screen()
+        render_header()
+        render_settings_status(config)
+        
+        choice = render_settings_menu(show_header=False)
         
         if choice == "0":
             break
