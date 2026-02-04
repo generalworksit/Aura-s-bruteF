@@ -38,11 +38,15 @@ class TelegramBot:
         self.config = config
         self._queue: queue.Queue = queue.Queue()
         self._thread: Optional[threading.Thread] = None
+        self._listener_thread: Optional[threading.Thread] = None
         self._running = False
         self._last_progress_time = 0
         self._internet_available = True
         self._error_count = 0
         self._max_errors = 5  # Disable after this many consecutive errors
+        self._last_update_id = 0  # For command polling
+        self._attack_engine = None  # Reference to attack engine for status
+        self._found_credentials: List[Dict[str, Any]] = []  # Store found creds
     
     @staticmethod
     def check_internet(timeout: float = 3.0) -> bool:
@@ -55,7 +59,7 @@ class TelegramBot:
             return False
     
     def start(self):
-        """Start the message sender thread."""
+        """Start the message sender and command listener threads."""
         if not self.config.enabled or not self.config.bot_token:
             return
         
@@ -65,14 +69,35 @@ class TelegramBot:
             return
         
         self._running = True
+        
+        # Start sender thread
         self._thread = threading.Thread(target=self._sender_loop, daemon=True)
         self._thread.start()
+        
+        # Start listener thread for commands
+        self._listener_thread = threading.Thread(target=self._listener_loop, daemon=True)
+        self._listener_thread.start()
+    
+    def set_attack_engine(self, engine):
+        """Set reference to attack engine for status commands."""
+        self._attack_engine = engine
+    
+    def add_found_credential(self, username: str, password: str, target: str):
+        """Store a found credential for /seeresults command."""
+        self._found_credentials.append({
+            "username": username,
+            "password": password,
+            "target": target,
+            "found_at": datetime.now().isoformat()
+        })
     
     def stop(self):
-        """Stop the sender thread."""
+        """Stop all threads."""
         self._running = False
         if self._thread:
             self._thread.join(timeout=2)
+        if self._listener_thread:
+            self._listener_thread.join(timeout=2)
     
     def _sender_loop(self):
         """Background thread that sends queued messages."""

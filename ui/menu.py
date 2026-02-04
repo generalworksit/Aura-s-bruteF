@@ -541,20 +541,99 @@ def render_session_list(sessions: list):
     console.print()
 
 
-def select_session(sessions: list) -> Optional[str]:
-    """Display session list and get selection."""
+def select_session(sessions: list) -> tuple:
+    """Display session list and get selection.
+    
+    Returns:
+        Tuple of (session_id, action) where action is 'resume', 'view', or None
+    """
     clear_screen()
     render_session_list(sessions)
     
     if not sessions:
-        return None
+        return None, None
     
-    choice = IntPrompt.ask("[cyan]Select session (0 to cancel)[/cyan]", default=0)
+    console.print("[dim]Enter session number to see options, or 0 to cancel[/dim]")
+    choice = IntPrompt.ask("[cyan]Select session[/cyan]", default=0)
     
     if choice == 0 or choice > len(sessions):
-        return None
+        return None, None
     
-    return sessions[choice - 1]["session_id"]
+    session = sessions[choice - 1]
+    session_id = session["session_id"]
+    found_count = session.get("found", 0)
+    
+    # Show action menu for selected session
+    console.print(f"\n[cyan]Session:[/cyan] {session_id}")
+    console.print(f"[cyan]Target:[/cyan] {session['target']}")
+    console.print(f"[cyan]Progress:[/cyan] {session['progress']}")
+    console.print(f"[cyan]Found:[/cyan] {found_count} credential(s)\n")
+    
+    console.print("[yellow]What would you like to do?[/yellow]")
+    if found_count > 0:
+        console.print("  [1] 🔑 View found credentials")
+        console.print("  [2] ▶️  Resume attack")
+    else:
+        console.print("  [1] ▶️  Resume attack")
+    console.print("  [0] ⬅️  Cancel\n")
+    
+    action = Prompt.ask("[cyan]Action[/cyan]", default="0")
+    
+    if action == "0":
+        return None, None
+    elif found_count > 0:
+        if action == "1":
+            return session_id, "view"
+        elif action == "2":
+            return session_id, "resume"
+    else:
+        if action == "1":
+            return session_id, "resume"
+    
+    return None, None
+
+
+def view_session_credentials(session_data) -> None:
+    """Display found credentials from a session."""
+    clear_screen()
+    render_header()
+    
+    found = session_data.found_credentials if hasattr(session_data, 'found_credentials') else []
+    
+    if not found:
+        console.print("[yellow]No credentials found in this session.[/yellow]")
+        console.print("\n[dim]Press Enter to go back...[/dim]")
+        input()
+        return
+    
+    content = Text()
+    content.append(f"🔓 Found {len(found)} Credential(s)\n\n", style="bold green")
+    content.append(f"🎯 Target: {session_data.target_host}:{session_data.target_port}\n", style="cyan")
+    content.append(f"📡 Protocol: {session_data.protocol.upper()}\n\n", style="cyan")
+    
+    for i, cred in enumerate(found, 1):
+        content.append(f"  [{i}] ", style="yellow")
+        content.append(f"👤 {cred.get('username', 'N/A')}", style="white")
+        content.append(" : ", style="dim")
+        content.append(f"🔑 {cred.get('password', 'N/A')}\n", style="green")
+        if cred.get('found_at'):
+            content.append(f"      Found at: {cred['found_at']}\n", style="dim")
+    
+    panel = Panel(
+        content,
+        title="[green]🔓 Session Credentials[/green]",
+        border_style="green",
+        box=ROUNDED,
+        padding=(1, 2),
+        width=min(60, get_terminal_width() - 4)
+    )
+    console.print(Align.center(panel))
+    console.print()
+    
+    # Option to copy to clipboard or export
+    console.print("[dim]💡 Tip: You can copy these credentials manually[/dim]")
+    console.print("\n[dim]Press Enter to go back...[/dim]")
+    input()
 
 
 def show_validation_error(error_type: str, error_msg: str, host: str, port: int):

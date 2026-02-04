@@ -331,29 +331,35 @@ def resume_session():
         input()
         return
     
-    session_id = select_session(sessions)
+    # Get session selection and action
+    session_id, action = select_session(sessions)
     
-    if not session_id:
+    if not session_id or not action:
         return
     
     # Load session
     try:
         session = session_manager.load(session_id)
         
-        console.print(f"\n[cyan]Resuming session: {session.session_id}[/cyan]")
-        console.print(f"[dim]Progress: {session.progress.tested}/{session.progress.total_combinations}[/dim]")
-        
-        # Recreate attack - skip validation since it was already done
-        run_attack(
-            protocol=session.protocol,
-            mode=session.mode,
-            attack_config=session.attack_config,
-            target_config={
-                "host": session.target_host,
-                "port": session.target_port
-            },
-            skip_validation=True
-        )
+        if action == "view":
+            # View found credentials
+            from ui.menu import view_session_credentials
+            view_session_credentials(session)
+        elif action == "resume":
+            # Resume attack
+            console.print(f"\n[cyan]Resuming session: {session.session_id}[/cyan]")
+            console.print(f"[dim]Progress: {session.progress.tested}/{session.progress.total_combinations}[/dim]")
+            
+            run_attack(
+                protocol=session.protocol,
+                mode=session.mode,
+                attack_config=session.attack_config,
+                target_config={
+                    "host": session.target_host,
+                    "port": session.target_port
+                },
+                skip_validation=True
+            )
     except Exception as e:
         console.print(f"[red]Error loading session: {e}[/red]")
         console.print("[dim]Press Enter to return to menu...[/dim]")
