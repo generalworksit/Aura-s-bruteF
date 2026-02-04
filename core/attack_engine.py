@@ -249,28 +249,32 @@ class AttackEngine:
         
         with Progress(
             SpinnerColumn(),
-            TextColumn("[bold blue]{task.description}"),
-            BarColumn(bar_width=30),
-            TextColumn("[progress.percentage]{task.percentage:>3.1f}%"),
-            TextColumn("•"),
-            TextColumn("[cyan]{task.fields[speed]}/s"),
-            TextColumn("•"),
-            TextColumn("[yellow]Found: {task.fields[found]}"),
-            TextColumn("•"),
-            TextColumn("{task.fields[status]}"),  # Host status
+            TextColumn("[bold cyan]{task.description}"),
+            BarColumn(bar_width=25),
+            TextColumn("[bold white]{task.percentage:>3.1f}%"),
+            TextColumn("│"),
+            TextColumn("⚡ [cyan]{task.fields[speed]}/s"),
+            TextColumn("│"),
+            TextColumn("🔑 [yellow]{task.fields[found]}"),
+            TextColumn("│"),
+            TextColumn("{task.fields[status]}"),
+            TextColumn("│"),
+            TextColumn("⏱️"),
             TimeElapsedColumn(),
-            TextColumn("•"),
+            TextColumn("│"),
+            TextColumn("🏁 ETA:"),
             TimeRemainingColumn(),
             console=self.console,
-            refresh_per_second=4
+            refresh_per_second=4,
+            expand=False
         ) as progress:
             
             task = progress.add_task(
-                f"[cyan]⚔️  Attacking {self.attacker.host}:{self.attacker.port}",
+                f"⚔️ {self.attacker.host}:{self.attacker.port}",
                 total=self.stats.total,
                 speed="0",
                 found="0",
-                status=self._host_status  # Add status field
+                status=self._host_status
             )
             
             with ThreadPoolExecutor(max_workers=self.threads) as executor:
